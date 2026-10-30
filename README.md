@@ -1,8 +1,8 @@
-# ShareVault
+# BorrowVault
 
 Borrow, lend and share skills with verified neighbours in your gated society. Every handover is backed by photo proof from both sides, and payments run over UPI.
 
-**ShareVault | by 3PandaLabs**
+**BorrowVault | by 3PandaLabs**
 
 | Folder | What |
 |---|---|

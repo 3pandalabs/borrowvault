@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://sharevault.3pandalabs.com", "http://localhost:3000"],
+        "origins": ["https://borrowvault.3pandalabs.com", "http://localhost:3000"],
         "methods": ["PUT", "GET"],
         "headers": ["content-type", "content-length"]
       },

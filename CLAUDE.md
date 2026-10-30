@@ -1,13 +1,13 @@
-# ShareVault — repo conventions
+# BorrowVault — repo conventions
 
 Peer-to-peer item rental and micro-gigs **inside one verified gated society**. Fifth backend product at 3PandaLabs (after ReceiptCash, RentVault, RsvpVault and AdVault). Full design: `infra/blueprint.md`. API contract: `api/ROUTES.md`; change the contract first, then the code.
 
 ## Naming
 
-**ShareVault** everywhere. The product was named before anything was provisioned, so there is no copy/identifier split. Every identifier is lowercase `sharevault`: repo, database, `sharevault_app` role, R2 buckets (`sharevault-evidence`, `sharevault-backups`), Coolify resources (`sharevault-api`, `sharevault-worker`), Temporal task queue `sharevault`, and the `/metrics` app key.
+**BorrowVault** everywhere. The product was named before anything was provisioned, so there is no copy/identifier split. Every identifier is lowercase `borrowvault`: repo, database, `borrowvault_app` role, R2 buckets (`borrowvault-evidence`, `borrowvault-backups`), Coolify resources (`borrowvault-api`, `borrowvault-worker`), Temporal task queue `borrowvault`, and the `/metrics` app key.
 
 Hostnames, **all under one first label** (Cloudflare's per-app cert depends on it; see the knowledge_base CERTIFICATES gotcha):
-`sharevault.3pandalabs.com` (web) · `api.sharevault.3pandalabs.com` (proxied) · `api-internal.sharevault.3pandalabs.com` (DNS-only, for Worker → API).
+`borrowvault.3pandalabs.com` (web) · `api.borrowvault.3pandalabs.com` (proxied) · `api-internal.borrowvault.3pandalabs.com` (DNS-only, for Worker → API).
 
 ## Layout
 

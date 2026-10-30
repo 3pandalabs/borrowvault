@@ -1,6 +1,6 @@
-# ShareVault — Production Blueprint (v1)
+# BorrowVault — Production Blueprint (v1)
 
-Name **ShareVault** (decided 2026-10-30; fits the RentVault / RsvpVault / AdVault family; rename is copy-only, per the org convention). Peer-to-peer item rental + micro-skills network, scoped to ONE gated society (500+ flats) at a time.
+Name **BorrowVault** (decided 2026-10-30; fits the RentVault / RsvpVault / AdVault family; rename is copy-only, per the org convention). Peer-to-peer item rental + micro-skills network, scoped to ONE gated society (500+ flats) at a time.
 
 Date: 2026-10-30. Status: exploring. Built on the existing 3PandaLabs stack — nothing new is introduced except a payment gateway.
 
@@ -14,11 +14,11 @@ Date: 2026-10-30. Status: exploring. Built on the existing 3PandaLabs stack — 
 | Web | **Next.js 16 on Cloudflare Workers** (`@opennextjs/cloudflare`) | Society-admin console + public listing previews; same as RentVault/RsvpVault |
 | API | **Fastify 5 + Drizzle + Zod + JWT** on Coolify (Hetzner `nrighar-coolify-fsn`) | Copy RsvpVault's `api/` skeleton (cleanest reference) |
 | Orchestration | **Temporal** (already live on the box) — one long-running workflow per booking | The booking IS a state machine with timers (accept timeout, return due, auto-release, dispute SLA). Exactly what RentVault's Temporal setup is for |
-| DB | New `sharevault` database + `sharevault_app` role on shared `3pandalabs-postgres` | Org pattern. **No PostGIS** — the society is the geofence; a centre point + radius (or a small polygon checked in app code) is enough |
-| Media | R2 buckets `sharevault-evidence` (private, presigned) + `sharevault-backups` | Same as `nrighar-documents`. Evidence is never public |
+| DB | New `borrowvault` database + `borrowvault_app` role on shared `3pandalabs-postgres` | Org pattern. **No PostGIS** — the society is the geofence; a centre point + radius (or a small polygon checked in app code) is enough |
+| Media | R2 buckets `borrowvault-evidence` (private, presigned) + `borrowvault-backups` | Same as `nrighar-documents`. Evidence is never public |
 | Email | Shared `3pandalabs/mailer` Worker | Org convention. Push via Expo Notifications for time-critical steps |
 | Payments | **UPI only.** Phase 1: direct UPI intent links (lender's VPA, no gateway — RentVault `payLinks` pattern). Phase 2: **UPI one-time mandate / block** for the deposit (funds *blocked* in the borrower's bank, debited only on a damage award) + UPI collect for the fee, via Razorpay (Cashfree fallback) | UPI is how India pays; a block means no money moves on the happy path — nothing to refund |
-| Hostnames | `sharevault.3pandalabs.com`, `api.sharevault.3pandalabs.com`, `api-internal.sharevault.3pandalabs.com` | **All under one first label** (cert lesson from RsvpVault, 2026-10-26) |
+| Hostnames | `borrowvault.3pandalabs.com`, `api.borrowvault.3pandalabs.com`, `api-internal.borrowvault.3pandalabs.com` | **All under one first label** (cert lesson from RsvpVault, 2026-10-26) |
 | Ops | `/metrics` endpoint + admin page table; Mermaid flow diagram in `3pandalabs/admin` | Org conventions |
 
 ### ⚠️ Blocker to resolve before building payments
@@ -38,28 +38,28 @@ Also: holding customer money for a marketplace is regulated by RBI's Payment Agg
 ```
                        Cloudflare (proxied, orange cloud)
   ┌──────────────┐     ┌───────────────────────────┐
-  │ Expo app     │────▶│ api.sharevault.3pandalabs  │──┐
+  │ Expo app     │────▶│ api.borrowvault.3pandalabs  │──┐
   │ (resident)   │     └───────────────────────────┘  │   Hetzner nrighar-coolify-fsn
   └──────────────┘                                    │   (Coolify + Traefik)
   ┌──────────────┐     ┌───────────────────────────┐  │  ┌──────────────────────────┐
-  │ Browser      │────▶│ sharevault-web Worker      │──┼─▶│ sharevault-api (Fastify)  │
+  │ Browser      │────▶│ borrowvault-web Worker      │──┼─▶│ borrowvault-api (Fastify)  │
   │ (admin/web)  │     │ (Next.js 16, OpenNext)    │  │  │   routes → Temporal       │
   └──────────────┘     └───────────────────────────┘  │  ├──────────────────────────┤
-                         server-side → api-internal ──┘  │ sharevault-worker          │
+                         server-side → api-internal ──┘  │ borrowvault-worker          │
                                                          │   workflows + activities  │
   Razorpay ──webhooks──▶ /webhooks/razorpay ────────────▶│   (Temporal task queue    │
-                                                         │    "sharevault")           │
+                                                         │    "borrowvault")           │
                                                          ├──────────────────────────┤
                                                          │ temporal (shared)         │
                                                          │ 3pandalabs-postgres       │
-                                                         │   db: sharevault           │
+                                                         │   db: borrowvault           │
                                                          └───────────┬──────────────┘
                                                                      │ presigned PUT/GET
                                                               Cloudflare R2
-                                                    sharevault-evidence / sharevault-backups
+                                                    borrowvault-evidence / borrowvault-backups
 ```
 
-Repo `3pandalabs/sharevault` (public, per org convention): `web/` + `app/` + `api/` (+ `Dockerfile.worker`, as in nrighar) + `infra/` + `brand/`.
+Repo `3pandalabs/borrowvault` (public, per org convention): `web/` + `app/` + `api/` (+ `Dockerfile.worker`, as in nrighar) + `infra/` + `brand/`.
 
 ### 1.1 Why Temporal for the booking (and what stays outside it)
 
@@ -1306,11 +1306,11 @@ Notes on correctness:
 ## 8. Ops checklist (per org conventions)
 
 - [ ] Follow `knowledge_base/launching-a-new-app.md` end to end
-- [ ] Repo `3pandalabs/sharevault` **public** from day one (Coolify public-repo source); main-branch ruleset
-- [ ] DB `sharevault` + role `sharevault_app`, `ALTER SCHEMA public OWNER TO sharevault_app` at creation (avoids the 42501 crash-loop); idempotent migrations; `MIGRATION_DATABASE_URL` unset; `btree_gist` extension created by superuser once
-- [ ] Coolify: `sharevault-api` + `sharevault-worker` (Temporal task queue `sharevault`); Postgres backup schedule → `sharevault-backups` from day one (RsvpVault still hasn't)
+- [ ] Repo `3pandalabs/borrowvault` **public** from day one (Coolify public-repo source); main-branch ruleset
+- [ ] DB `borrowvault` + role `borrowvault_app`, `ALTER SCHEMA public OWNER TO borrowvault_app` at creation (avoids the 42501 crash-loop); idempotent migrations; `MIGRATION_DATABASE_URL` unset; `btree_gist` extension created by superuser once
+- [ ] Coolify: `borrowvault-api` + `borrowvault-worker` (Temporal task queue `borrowvault`); Postgres backup schedule → `borrowvault-backups` from day one (RsvpVault still hasn't)
 - [ ] Dockerfile on **node:22-alpine** (avoid RsvpVault's Node-20 fuse)
-- [ ] Hostnames all under `sharevault.` first label; orange cloud except `api-internal` (grey, for Worker → API)
+- [ ] Hostnames all under `borrowvault.` first label; orange cloud except `api-internal` (grey, for Worker → API)
 - [ ] `/metrics` endpoint + admin page table; Mermaid booking-flow diagram in `3pandalabs/admin`
 - [ ] Mailer: needs its own verified sender — **Resend only holds one domain on the current plan** (adding one evicts `rsvpvault`). Use push notifications for Phase 1; solve mail sender before launch
 - [ ] Uptime Kuma check + watchdog entry; error-burst alert already covers new containers
@@ -1345,7 +1345,7 @@ The state machine, inspections and dispute UI are **the product** — build them
 
 1. Indian entity: incorporate now (Phase 2 dependency) or validate first? (Recommendation: validate first.)
 2. Pilot society — which one, and who is the first society admin?
-3. ~~Final name~~ — decided: ShareVault (2026-10-30).
+3. ~~Final name~~ — decided: BorrowVault (2026-10-30).
 4. Phone OTP provider (needs Indian entity for DLT-registered SMS) vs. WhatsApp OTP vs. email-only in Phase 1.
 5. Does the platform fee apply in Phase 1 (no gateway → can't collect it)? Likely free in Phase 1.
 6. Resend single-domain constraint — upgrade plan or move mailer to Cloudflare Email Service?

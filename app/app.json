@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "BorrowVault",
+    "slug": "borrowvault-app",
+    "owner": "3pandalabs",
+    "scheme": "borrowvault",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.threepanda.borrowvault"
+    },
+    "android": {
+      "package": "com.threepanda.borrowvault",
+      "adaptiveIcon": {
+        "backgroundColor": "#2f7a4f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BorrowVault uses your camera to take handover and return photos of the item, so you and your neighbour both have a time-stamped record of its condition. Photos are taken only when you tap the shutter.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BorrowVault reads your location only at the moment you take a handover or return photo, to confirm it was taken inside your society. We never track you in the background.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BorrowVault lets you pick photos from your gallery for your listings and your address proof. Handover and return photos always use the in-app camera.",
+          "cameraPermission": "BorrowVault uses your camera to photograph your address proof (for example, a maintenance bill or rent agreement) for your society admin to verify.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-notifications",
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ],
+    "extra": {
+      "router": {}
+    }
+  }
+}

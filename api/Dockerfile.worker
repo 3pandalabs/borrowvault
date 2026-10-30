@@ -1,0 +1,26 @@
+# borrowvault-worker: Temporal worker for bookingWorkflow (task queue
+# `borrowvault`). Same source tree as the API, separate Coolify resource, no
+# HTTP port. Activities do real DB/R2/mail work, so it needs the same env as
+# the API (DATABASE_URL, JWT_SECRET, R2_*, MAILER_*) plus TEMPORAL_*.
+#
+# NOT alpine (unlike Dockerfile): @temporalio/core-bridge is a glibc-linked
+# native binary and fails on musl with ERR_DLOPEN_FAILED (RentVault, found the
+# hard way). bookworm-slim is glibc and still small.
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+
+RUN groupadd --system borrowvault && useradd --system --gid borrowvault borrowvault
+USER borrowvault
+
+CMD ["node", "dist/temporal/worker.js"]

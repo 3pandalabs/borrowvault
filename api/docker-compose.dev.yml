@@ -1,0 +1,22 @@
+# Local Postgres only (port 5434, so it doesn't clash with RentVault/RsvpVault
+# dev databases). Production uses the shared 3pandalabs-postgres instance.
+# Temporal for dev: `temporal server start-dev` (CLI), see README.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: borrowvault
+      POSTGRES_PASSWORD: borrowvault
+      POSTGRES_DB: borrowvault
+    ports:
+      - "5434:5432"
+    volumes:
+      - borrowvault_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U borrowvault"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  borrowvault_pgdata:

@@ -1,0 +1,40 @@
+{
+  // Build with `next build --webpack` (see package.json). Turbopack output is
+  // not fully supported by @opennextjs/cloudflare: the deploy succeeds and then
+  // every route 500s with "ChunkLoadError". RentVault hit this 2026-07-21.
+  //
+  // Do NOT add a src/proxy.ts or middleware: the adapter can't bundle it
+  // (Node-only `async_hooks`). See ../CLAUDE.md.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "borrowvault-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // wrangler creates and maintains the DNS record for a custom_domain route
+  // itself: do NOT also add a manual record for this hostname.
+  //
+  // Changing this pattern DELETES the previous custom domain's DNS record, and
+  // Cloudflare's per-app edge cert (`borrowvault.3pandalabs.com` +
+  // `*.borrowvault.3pandalabs.com`) is keyed to this first-label hostname
+  // existing. Deleting it kills TLS for api.borrowvault.3pandalabs.com too
+  // (RsvpVault lost its API for a day this way, 2026-10-26).
+  "routes": [
+    {
+      "pattern": "borrowvault.3pandalabs.com",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "NEXT_PUBLIC_API_URL": "https://api.borrowvault.3pandalabs.com",
+    "NEXT_PUBLIC_SITE_URL": "https://borrowvault.3pandalabs.com",
+    // DNS-only hostname for server-side fetches (orange-to-orange). The web app
+    // is fully client-rendered against the API today, so nothing reads this
+    // yet; it is here so a future server-rendered page doesn't reach for the
+    // proxied host.
+    "INTERNAL_API_URL": "https://api-internal.borrowvault.3pandalabs.com"
+  }
+}

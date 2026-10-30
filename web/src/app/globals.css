@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* Brand tokens copied from 3pandalabs/brand background/tokens.css (light
+   values). Light only, like RsvpVault: the console is dense forms and photo
+   comparisons, and a half-themed dark mode reads worse than none. */
+:root {
+  color-scheme: light;
+  --bg: #fafafa;
+  --bg-subtle: #f4f4f5;
+  --fg: #18181b;
+  --fg-muted: #52525b;
+  --border: #e4e4e7;
+  --accent: #2f7a4f;
+  --accent-fg: #ffffff;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 3PandaLabs logo mark, verbatim from brand/logo/panda-mark.css. */
+.brand-mark {
+  position: relative;
+  display: inline-block;
+  width: 2.2rem;
+  height: 2.05rem;
+  flex-shrink: 0;
+}
+.brand-mark span {
+  position: absolute;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.brand-mark span:nth-child(1) { top: -0.1rem; left: 0.52rem; z-index: 2; }
+.brand-mark span:nth-child(2) { top: 0.6rem; left: 0.02rem; transform: rotate(-24deg); }
+.brand-mark span:nth-child(3) { top: 0.6rem; left: 1.02rem; transform: rotate(24deg); }

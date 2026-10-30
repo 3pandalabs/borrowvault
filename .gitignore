@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.open-next/
+.wrangler/
+.expo/
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+api/.env
+!web/.env.production
+!api/.env.example
+.DS_Store

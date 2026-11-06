@@ -114,7 +114,7 @@ export default function ListingDetailPage() {
           <Panel>
             <PanelTitle>Questions first?</PanelTitle>
             <p className="mb-3 text-sm text-fg-muted">
-              Ask {l.owner.displayName} about condition, pickup or what&apos;s included before you book.
+              {`Ask ${l.owner.displayName} about condition, pickup or what's included before you book.`}
             </p>
             <OpenChatButton variant="outline" open={() => openListingConversation(l.id)}>
               Ask a question

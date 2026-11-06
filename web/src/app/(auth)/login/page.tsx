@@ -8,9 +8,11 @@ import { ErrorText, Field } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, errorMessage, login, setTokens } from "@/lib/api";
+import { useNextPath } from "@/lib/hooks";
 
 export default function LoginPage() {
   const router = useRouter();
+  const next = useNextPath();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export default function LoginPage() {
     try {
       const res = await login({ email, password });
       setTokens(res.accessToken, res.refreshToken);
-      router.push("/home");
+      router.push(next ?? "/home");
     } catch (err) {
       setError(err instanceof ApiError && err.status < 500 ? "Incorrect email or password." : errorMessage(err));
     } finally {
@@ -64,7 +66,7 @@ export default function LoginPage() {
       </form>
       <p className="mt-4 text-center text-sm text-fg-muted">
         New here?{" "}
-        <Link href="/signup" className="font-medium text-accent hover:underline">
+        <Link href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} className="font-medium text-accent hover:underline">
           Create an account
         </Link>
       </p>

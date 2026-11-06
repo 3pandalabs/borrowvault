@@ -1,4 +1,4 @@
-import { Camera, Hammer, HandCoins, IndianRupee, ShieldCheck, Smartphone, Users } from "lucide-react";
+import { Building2, Camera, Hammer, HandCoins, IndianRupee, ShieldCheck, Smartphone, Users } from "lucide-react";
 import Link from "next/link";
 import { Backdrop } from "@/components/Backdrop";
 import { Logo } from "@/components/Wordmark";
@@ -100,6 +100,22 @@ export default function Landing() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="mb-10 flex flex-col items-start justify-between gap-4 rounded-3xl border border-line bg-white/80 p-8 backdrop-blur-sm sm:flex-row sm:items-center">
+          <div className="flex gap-4">
+            <Building2 className="size-7 shrink-0 text-accent" />
+            <div>
+              <h2 className="text-lg font-semibold text-fg">Run your society&apos;s RWA or committee?</h2>
+              <p className="mt-1 max-w-xl text-sm text-fg-muted">
+                Register your society on BorrowVault. We check your RWA&apos;s documents, then open it for your residents
+                with you as its admin.
+              </p>
+            </div>
+          </div>
+          <Link href="/signup?next=/societies/register" className="shrink-0">
+            <Button variant="outline">Register your society</Button>
+          </Link>
         </section>
 
         <section id="get-the-app" className="mb-20 rounded-3xl border border-line bg-white/80 p-8 text-center backdrop-blur-sm">

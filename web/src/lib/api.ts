@@ -8,6 +8,10 @@
 import type {
   AdminDispute,
   AdminMembership,
+  AdminRequest,
+  AdminRequestInput,
+  AdminRequestStatus,
+  ApproveAdminRequestInput,
   AuthResponse,
   Booking,
   BookingDetail,
@@ -31,10 +35,12 @@ import type {
   Membership,
   Occupancy,
   PresignPurpose,
+  PlatformAdminRequest,
   PricingUnit,
   Rating,
   RatingInput,
   Society,
+  SocietyAdmin,
   SocietyPatch,
   SocietySearchResult,
   Tower,
@@ -60,6 +66,7 @@ export class ApiError extends Error {
  */
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
+    if (Object.prototype.hasOwnProperty.call(MESSAGE_COPY, e.message)) return MESSAGE_COPY[e.message];
     switch (e.code) {
       case "OVERLAP":
         return "Those dates clash with another booking. Pick a different slot.";
@@ -80,6 +87,21 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error && e.message) return e.message;
   return "Something went wrong.";
 }
+
+// Admin-request and admin-membership errors (api/ROUTES.md) put a code in
+// `error` rather than prose, so they get human copy here.
+const MESSAGE_COPY: Record<string, string> = {
+  request_pending:
+    "You already have a request waiting for review. Withdraw it from My requests if you need to change something.",
+  already_admin: "You're already an admin of this society.",
+  not_pending: "This request has already been reviewed or withdrawn. Refresh to see where it is now.",
+  membership_not_active:
+    "The requester's membership in this society is no longer approved, so they can't be made an admin.",
+  not_admin: "That person isn't an admin of this society any more. Refresh the list.",
+  admin_membership_platform_only:
+    "Only BorrowVault can reject or remove a society admin. Write to 3PandaLabs if an admin should step down.",
+  platform_admin_required: "Only BorrowVault platform admins can do that.",
+};
 
 // ---- tokens ----
 
@@ -267,6 +289,20 @@ export const patchSociety = (societyId: string, b: SocietyPatch) =>
   call<Society>(`/admin/societies/${enc(societyId)}`, { method: "PATCH", body: b });
 export const adminDisputes = (societyId: string, status?: string) =>
   call<AdminDispute[]>(`/admin/societies/${enc(societyId)}/disputes${qs({ status })}`);
+/** Read-only for society admins; only platform admins can remove one. */
+export const societyAdmins = (societyId: string) =>
+  call<SocietyAdmin[]>(`/admin/societies/${enc(societyId)}/admins`);
+
+// ---- admin requests (becoming a society admin) ----
+
+/** → 201 AdminRequest (pending). 409 `request_pending`/`already_admin`; join_admin 404 = no approved membership. */
+export const createAdminRequest = (b: AdminRequestInput) =>
+  call<AdminRequest>("/admin-requests", { method: "POST", body: b });
+/** Newest first, all statuses. */
+export const myAdminRequests = () => call<AdminRequest[]>("/admin-requests/mine");
+/** 409 `not_pending` if it isn't pending any more. */
+export const withdrawAdminRequest = (id: string) =>
+  call<AdminRequest>(`/admin-requests/${enc(id)}/withdraw`, { method: "POST" });
 
 // ---- platform admin ----
 
@@ -279,6 +315,22 @@ export const createSociety = (b: {
   adminUserEmail: string;
 }) => call<Society>("/platform/societies", { method: "POST", body: b });
 export const listPlatformSocieties = () => call<Society[]>("/platform/societies");
+/** Default `pending` (oldest first); other statuses newest first. docUrls last 10 min. */
+export const listPlatformAdminRequests = (status?: AdminRequestStatus) =>
+  call<PlatformAdminRequest[]>(`/platform/admin-requests${qs({ status })}`);
+export const approveAdminRequest = (id: string, b: ApproveAdminRequestInput) =>
+  call<PlatformAdminRequest>(`/platform/admin-requests/${enc(id)}/approve`, { method: "POST", body: b });
+/** `note` is required (5–1000) and emailed to the requester. */
+export const rejectAdminRequest = (id: string, note: string) =>
+  call<PlatformAdminRequest>(`/platform/admin-requests/${enc(id)}/reject`, { method: "POST", body: { note } });
+export const platformSocietyAdmins = (societyId: string) =>
+  call<SocietyAdmin[]>(`/platform/societies/${enc(societyId)}/admins`);
+/** Demotes to resident (stays approved). `note` required (5–1000). → the remaining admins. */
+export const revokeSocietyAdmin = (societyId: string, membershipId: string, note: string) =>
+  call<SocietyAdmin[]>(`/platform/societies/${enc(societyId)}/admins/${enc(membershipId)}/revoke-admin`, {
+    method: "POST",
+    body: { note },
+  });
 
 // ---- listings ----
 

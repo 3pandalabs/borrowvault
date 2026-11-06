@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import type {
+  AdminRequest,
   AuthResponse,
   Booking,
   BookingDetail,
@@ -264,6 +265,22 @@ export const joinSociety = (
   societyId: string,
   body: { inviteCode?: string; towerId: string; flatNo: string; occupancy: Occupancy; proofKey?: string },
 ) => post<Membership>(`/societies/${encodeURIComponent(societyId)}/join`, body);
+
+// ---------------- Admin requests ----------------
+// Submitting one needs document uploads, which happen on the web (src/lib/web.ts).
+
+export const listMyAdminRequests = () => get<AdminRequest[]>("/admin-requests/mine");
+export const withdrawAdminRequest = (id: string) =>
+  post<AdminRequest>(`/admin-requests/${encodeURIComponent(id)}/withdraw`);
+
+/** Admin-request errors whose generic copy (written for bookings) would mislead. */
+export function adminRequestError(err: unknown): string {
+  if (err instanceof ApiError && err.error === "not_pending") {
+    return "This request has already been reviewed or withdrawn. Pull down to refresh.";
+  }
+  if (err instanceof ApiError && err.status === 404) return "Request not found. Pull down to refresh.";
+  return friendlyError(err);
+}
 
 // ---------------- Storage ----------------
 

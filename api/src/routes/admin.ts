@@ -9,6 +9,7 @@ import { db } from "../db/index.js";
 import { bookings, disputes, inviteCodes, memberships, societies, towers, users } from "../db/schema.js";
 import { isPlatformAdmin, requireSocietyAdmin } from "../lib/authz.js";
 import { conflict, forbidden, invalid, notFound } from "../lib/errors.js";
+import { societyAdminMayReview } from "../lib/adminRequests.js";
 import { notifyUsers } from "../lib/notify.js";
 import { membershipBase, membershipById, toMembershipView } from "../lib/users.js";
 
@@ -106,7 +107,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const [m] = await db.select().from(memberships).where(eq(memberships.id, membershipId)).limit(1);
     if (!m) throw notFound();
     await requireSocietyAdmin(adminId, m.societyId);
-    if (m.userId === adminId && !(await isPlatformAdmin(adminId))) throw forbidden("you cannot review your own membership");
+    const platform = await isPlatformAdmin(adminId);
+    if (m.userId === adminId && !platform) throw forbidden("you cannot review your own membership");
+    // Only a platform admin can remove (or reject) a society admin.
+    if (to !== "approved" && !societyAdminMayReview(m.role, platform)) throw forbidden("admin_membership_platform_only");
     const from = to === "revoked" ? ["approved"] : ["pending"];
     if (!from.includes(m.status)) throw conflict(`membership is ${m.status}`);
     const updated = await db
@@ -277,6 +281,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           via: "platform",
           approvedBy: req.userId!,
           approvedAt: new Date(),
+          adminSince: new Date(),
         });
         return s;
       });

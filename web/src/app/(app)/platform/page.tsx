@@ -1,22 +1,38 @@
 "use client";
 
-import { Building2, ChevronRight, Loader2 } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, FileCheck2, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { EmptyState, ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle } from "@/components/common";
+import { AdminRequestsQueue, PlatformSocietyAdmins } from "@/components/platformAdmin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createSociety, errorMessage, listPlatformSocieties } from "@/lib/api";
 import { useAction, useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
+import { cn } from "@/lib/utils";
+
+const TABS = [
+  { key: "requests", label: "Admin requests", icon: FileCheck2 },
+  { key: "societies", label: "Societies", icon: Building2 },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
 
 export default function PlatformPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <Platform />
+    </Suspense>
+  );
+}
+
+function Platform() {
   const { user } = useSession();
-  const [form, setForm] = useState({ name: "", city: "", lat: "", lng: "", radius: "300", email: "" });
-  const societies = useAsync(listPlatformSocieties, user.isPlatformAdmin ? "platform-societies" : null);
-  const action = useAction();
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const router = useRouter();
+  const tabParam = useSearchParams().get("tab");
+  const tab: Tab = TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "requests";
 
   if (!user.isPlatformAdmin) {
     return (
@@ -32,6 +48,35 @@ export default function PlatformPage() {
     );
   }
 
+  return (
+    <>
+      <PageHeader title="Platform admin" subtitle="Verify society admins and manage societies." />
+      <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => router.replace(`/platform?tab=${key}`)}
+            className={cn(
+              "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm",
+              tab === key ? "border-accent font-medium text-accent" : "border-transparent text-fg-muted hover:text-fg",
+            )}
+          >
+            <Icon className="size-4" /> {label}
+          </button>
+        ))}
+      </div>
+      {tab === "requests" ? <AdminRequestsQueue /> : <Societies />}
+    </>
+  );
+}
+
+function Societies() {
+  const [form, setForm] = useState({ name: "", city: "", lat: "", lng: "", radius: "300", email: "" });
+  const societies = useAsync(listPlatformSocieties, "platform-societies");
+  const action = useAction();
+  const [openAdmins, setOpenAdmins] = useState<string | null>(null);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
   const lat = Number(form.lat);
   const lng = Number(form.lng);
   const radius = Number(form.radius);
@@ -42,27 +87,74 @@ export default function PlatformPage() {
     null;
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader title="Platform admin" subtitle="Create a society and assign its first admin." />
+    <div className="mx-auto max-w-3xl">
       <Panel>
+        <PanelTitle aside={societies.data ? <span className="text-xs text-fg-muted">{societies.data.length} total</span> : null}>
+          All societies
+        </PanelTitle>
+        {societies.error ? (
+          <LoadError error={societies.error} onRetry={societies.reload} />
+        ) : !societies.data ? (
+          <Loading />
+        ) : societies.data.length === 0 ? (
+          <p className="text-sm text-fg-muted">No societies yet. They appear here once a registration request is approved.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {societies.data.map((s) => (
+              <li key={s.id} className="py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Building2 className="size-4 shrink-0 text-fg-muted" />
+                    <span className="truncate font-medium">{s.name}</span>
+                    <span className="text-fg-muted">{s.city}</span>
+                    <Badge variant={s.status === "live" ? "good" : "muted"}>{s.status}</Badge>
+                    <span className="hidden text-xs text-fg-muted sm:inline">
+                      {s.settings?.depositMode === "p2p" ? "P2P deposits" : "Declared deposits"} · {s.radiusM} m
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => setOpenAdmins((o) => (o === s.id ? null : s.id))}>
+                      {openAdmins === s.id ? <ChevronDown /> : <ChevronRight />} Admins
+                    </Button>
+                    <Link href={`/admin/${s.id}`} className="flex items-center gap-1 px-2 text-accent hover:underline">
+                      Admin console <ChevronRight className="size-4" />
+                    </Link>
+                  </span>
+                </div>
+                {openAdmins === s.id ? (
+                  <div className="mt-2 rounded-xl border border-line bg-zinc-50/60 px-4">
+                    <PlatformSocietyAdmins societyId={s.id} />
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelTitle>Create a society directly</PanelTitle>
+        <p className="mb-4 text-sm text-fg-muted">
+          For staff use only. Societies normally register themselves through a verified admin request (the Admin requests
+          tab), which checks the committee&apos;s documents first.
+        </p>
         <form
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (err) return;
-            action
-              .run(async () => {
-                const s = await createSociety({
-                  name: form.name.trim(),
-                  city: form.city.trim(),
-                  centerLat: lat,
-                  centerLng: lng,
-                  radiusM: radius,
-                  adminUserEmail: form.email.trim(),
-                });
-                societies.setData([s, ...(societies.data ?? []).filter((x) => x.id !== s.id)]);
-                setForm({ name: "", city: "", lat: "", lng: "", radius: "300", email: "" });
-              }, errorMessage);
+            action.run(async () => {
+              const s = await createSociety({
+                name: form.name.trim(),
+                city: form.city.trim(),
+                centerLat: lat,
+                centerLng: lng,
+                radiusM: radius,
+                adminUserEmail: form.email.trim(),
+              });
+              societies.setData([s, ...(societies.data ?? []).filter((x) => x.id !== s.id)]);
+              setForm({ name: "", city: "", lat: "", lng: "", radius: "300", email: "" });
+            }, errorMessage);
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -92,44 +184,10 @@ export default function PlatformPage() {
             <Input id="email" type="email" required value={form.email} onChange={set("email")} />
           </Field>
           <ErrorText>{err ?? action.error}</ErrorText>
-          <Button type="submit" disabled={action.busy || !!err}>
+          <Button type="submit" variant="outline" disabled={action.busy || !!err}>
             {action.busy ? <Loader2 className="animate-spin" /> : null} Create society
           </Button>
         </form>
-      </Panel>
-
-      <Panel className="mt-4">
-        <PanelTitle aside={societies.data ? <span className="text-xs text-fg-muted">{societies.data.length} total</span> : null}>
-          All societies
-        </PanelTitle>
-        {societies.error ? (
-          <LoadError error={societies.error} onRetry={societies.reload} />
-        ) : !societies.data ? (
-          <Loading />
-        ) : societies.data.length === 0 ? (
-          <p className="text-sm text-fg-muted">No societies yet. Create the first one above.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {societies.data.map((s) => (
-              <li key={s.id}>
-                <Link href={`/admin/${s.id}`} className="flex items-center justify-between gap-2 py-3 text-sm hover:bg-zinc-50/60">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Building2 className="size-4 shrink-0 text-fg-muted" />
-                    <span className="truncate font-medium">{s.name}</span>
-                    <span className="text-fg-muted">{s.city}</span>
-                    <Badge variant={s.status === "live" ? "good" : "muted"}>{s.status}</Badge>
-                    <span className="hidden text-xs text-fg-muted sm:inline">
-                      {s.settings?.depositMode === "p2p" ? "P2P deposits" : "Declared deposits"} · {s.radiusM} m
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1 text-accent">
-                    Admin console <ChevronRight className="size-4" />
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
       </Panel>
     </div>
   );

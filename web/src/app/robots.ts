@@ -18,6 +18,8 @@ export default function robots(): MetadataRoute.Robots {
           "/bookings",
           "/admin/",
           "/platform",
+          "/societies",
+          "/admin-requests",
           "/login",
           "/signup",
           "/forgot-password",

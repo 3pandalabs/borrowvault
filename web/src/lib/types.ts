@@ -61,7 +61,95 @@ export type SocietyPatch = {
 
 export type InviteCode = { code: string; towerId: string; towerName: string; expiresAt: string; usedCount: number };
 
-export type PresignPurpose = "proof" | "listing_photo";
+export type PresignPurpose = "proof" | "listing_photo" | "admin_doc";
+
+// ---- Admin requests (becoming a society admin) ----
+
+export type SocietyAdmin = {
+  membershipId: string;
+  user: { id: string; displayName: string; email: string; phone: string };
+  /** null for admins created by direct POST /platform/societies. */
+  towerName: string | null;
+  flatNo: string | null;
+  /** When they became admin. */
+  since: string;
+};
+
+export type AdminRequestKind = "new_society" | "join_admin";
+export type AdminRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+export type ProposedSociety = {
+  name: string;
+  city: string;
+  address: string;
+  centerLat: number;
+  centerLng: number;
+  radiusM: number;
+  towerName: string;
+  flatNo: string;
+  occupancy: Occupancy;
+};
+
+export type AdminRequest = {
+  id: string;
+  kind: AdminRequestKind;
+  status: AdminRequestStatus;
+  requesterId: string;
+  /** join_admin: always set. new_society: null until approved. */
+  societyId: string | null;
+  /** join_admin: the society's name. new_society: the proposed name. */
+  societyName: string;
+  /** new_society only, as submitted (approval overrides aren't reflected). */
+  proposedSociety: ProposedSociety | null;
+  committeeRole: string;
+  statement: string | null;
+  docs: { rwaRegistrationKey: string | null; authorizationKey: string; idProofKey: string };
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PlatformAdminRequest = AdminRequest & {
+  requester: { id: string; displayName: string; email: string; phone: string };
+  society: { id: string; name: string; city: string } | null;
+  /** Presigned GETs (10 min); rwaRegistration only for new_society. */
+  docUrls: { rwaRegistration?: string; authorization: string; idProof: string };
+};
+
+export type NewSocietyRequestInput = {
+  kind: "new_society";
+  societyName: string;
+  city: string;
+  address: string;
+  centerLat: number;
+  centerLng: number;
+  radiusM: number;
+  towerName: string;
+  flatNo: string;
+  occupancy: Occupancy;
+  committeeRole: string;
+  statement?: string;
+  docs: { rwaRegistrationKey: string; authorizationKey: string; idProofKey: string };
+};
+
+export type JoinAdminRequestInput = {
+  kind: "join_admin";
+  societyId: string;
+  committeeRole: string;
+  statement?: string;
+  docs: { authorizationKey: string; idProofKey: string };
+};
+
+export type AdminRequestInput = NewSocietyRequestInput | JoinAdminRequestInput;
+
+export type ApproveAdminRequestInput = {
+  note?: string;
+  /** new_society only; ignored for join_admin. */
+  centerLat?: number;
+  centerLng?: number;
+  radiusM?: number;
+};
 
 export type PartyInfo = {
   id: string;

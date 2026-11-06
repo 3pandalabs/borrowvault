@@ -11,6 +11,12 @@ import { Backdrop } from "./Backdrop";
 import { LoadError, Loading, selectClass } from "./common";
 import { Logo } from "./Wordmark";
 
+/** /login that comes back here afterwards (deep links, e.g. from the mobile app). */
+function loginUrl() {
+  const here = window.location.pathname + window.location.search;
+  return here === "/home" ? "/login" : `/login?next=${encodeURIComponent(here)}`;
+}
+
 /**
  * Gate on what renders, NOT a security boundary: every request carries a
  * bearer token the API validates. No middleware (see ../../CLAUDE.md).
@@ -21,11 +27,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const me = useMeLoader(signedIn);
 
   useEffect(() => {
-    if (!signedIn) router.replace("/login");
+    if (!signedIn) router.replace(loginUrl());
   }, [signedIn, router]);
 
   useEffect(() => {
-    if (me.error instanceof ApiError && me.error.status === 401) router.replace("/login");
+    if (me.error instanceof ApiError && me.error.status === 401) router.replace(loginUrl());
   }, [me.error, router]);
 
   if (!signedIn) return null;

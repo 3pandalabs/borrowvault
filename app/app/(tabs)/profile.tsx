@@ -4,12 +4,14 @@ import { Pressable, Text, View } from "react-native";
 import { Button, Card, Chip, ErrorText, Field, H2, KV, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
-import { listListings, updateListing, updateMe } from "../../src/lib/api";
+import { listListings, listMyAdminRequests, updateListing, updateMe } from "../../src/lib/api";
 import { formatDate } from "../../src/lib/format";
 import { priceLine } from "../../src/lib/labels";
+import { openWeb } from "../../src/lib/openWeb";
 import { colors } from "../../src/lib/theme";
-import type { ListingSummary, User } from "../../src/lib/types";
+import type { AdminRequest, ListingSummary, Membership, User } from "../../src/lib/types";
 import { isValidVpa, normalisePhone } from "../../src/lib/validation";
+import { adminRequestUrl } from "../../src/lib/web";
 
 export default function Profile() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function Profile() {
   const save = useAction();
 
   const mine = useLoader(() => listListings({ ownerId: "me" }), [user?.id, approved.length]);
+  const adminRequests = useLoader(listMyAdminRequests, [user?.id]);
 
   async function setStatus(l: ListingSummary, status: "active" | "paused" | "archived") {
     await save.run(() => updateListing(l.id, { status }));
@@ -61,6 +64,12 @@ export default function Profile() {
         ))}
       </Card>
 
+      <SocietyAdminCard
+        memberships={approved}
+        requests={adminRequests.data ?? []}
+        onOpenRequests={() => router.push("/admin-requests")}
+      />
+
       <Card>
         <H2 right={<Button title="New" variant="ghost" icon="add" onPress={() => router.push("/listing/new")} />}>My listings</H2>
         {mine.data?.length === 0 ? <P muted>You haven&apos;t listed anything yet.</P> : null}
@@ -84,6 +93,71 @@ export default function Profile() {
       <Button title="Sign out" variant="danger" onPress={() => void signOut()} />
       <Text style={{ textAlign: "center", color: colors.fgMuted, fontSize: 12 }}>BorrowVault | by 3PandaLabs</Text>
     </Screen>
+  );
+}
+
+/**
+ * Becoming a society admin needs documents the platform verifies, so the
+ * request itself is made on the web; the app explains it and tracks status.
+ */
+function SocietyAdminCard({
+  memberships,
+  requests,
+  onOpenRequests,
+}: {
+  memberships: Membership[];
+  requests: AdminRequest[];
+  onOpenRequests: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const eligible = memberships.filter((m) => m.status === "approved" && m.role !== "society_admin");
+  if (eligible.length === 0 && requests.length === 0) return null;
+
+  const pendingFor = (societyId: string) =>
+    requests.some((r) => r.kind === "join_admin" && r.status === "pending" && r.societyId === societyId);
+
+  async function apply(societyId: string) {
+    setError(await openWeb(adminRequestUrl(societyId)));
+  }
+
+  return (
+    <Card>
+      <H2
+        right={
+          requests.length > 0 ? <Button title="My requests" variant="ghost" onPress={onOpenRequests} /> : undefined
+        }
+      >
+        Society admin
+      </H2>
+      {eligible.length > 0 ? (
+        <>
+          <P muted>
+            Admins approve residents and settle disputes for their society. To become one, upload on the BorrowVault
+            website: a letter on RWA letterhead or a committee resolution naming you, and your own ID proof (a masked
+            Aadhaar or a utility bill). The BorrowVault team verifies them before you get admin access.
+          </P>
+          {eligible.map((m) =>
+            pendingFor(m.societyId) ? (
+              <View key={m.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <Text style={{ color: colors.fg, flex: 1 }}>{m.societyName}</Text>
+                <Chip label="Under review" tone="warn" onPress={onOpenRequests} />
+              </View>
+            ) : (
+              <Button
+                key={m.id}
+                title={eligible.length > 1 ? `Become an admin of ${m.societyName}` : "Become a society admin"}
+                icon="open-outline"
+                variant="secondary"
+                onPress={() => void apply(m.societyId)}
+              />
+            ),
+          )}
+          <ErrorText>{error}</ErrorText>
+        </>
+      ) : (
+        <P muted>Track the admin requests you&apos;ve sent from the BorrowVault website.</P>
+      )}
+    </Card>
   );
 }
 

@@ -5,8 +5,10 @@ import { Pressable, Text, View } from "react-native";
 import { Button, Card, Empty, ErrorText, Field, Loading, P, Screen } from "../../src/components/ui";
 import { useAuth } from "../../src/hooks/useAuth";
 import { friendlyError, searchSocieties } from "../../src/lib/api";
+import { openWeb } from "../../src/lib/openWeb";
 import { colors } from "../../src/lib/theme";
 import type { SocietySearchResult } from "../../src/lib/types";
+import { registerSocietyUrl } from "../../src/lib/web";
 
 export default function SocietySearch() {
   const router = useRouter();
@@ -15,6 +17,11 @@ export default function SocietySearch() {
   const [fetched, setResults] = useState<SocietySearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  async function register() {
+    setLinkError(await openWeb(registerSocietyUrl()));
+  }
 
   useEffect(() => {
     const term = q.trim();
@@ -53,7 +60,7 @@ export default function SocietySearch() {
       <ErrorText>{error}</ErrorText>
       {loading ? <Loading /> : null}
       {results && !loading && results.length === 0 ? (
-        <Empty title="No society found" body="Your society may not be on BorrowVault yet. Ask your society admin to get in touch." />
+        <Empty title="No society found" body="Your society may not be on BorrowVault yet." />
       ) : null}
       {results?.map((s) => (
         <Pressable
@@ -72,6 +79,15 @@ export default function SocietySearch() {
           </Card>
         </Pressable>
       ))}
+      <Card>
+        <P style={{ fontWeight: "700" }}>Society not listed?</P>
+        <P muted>
+          If you&apos;re on your RWA committee, register it on the BorrowVault website with your RWA registration
+          certificate, an authorisation letter and your ID. We verify them, then you become its admin.
+        </P>
+        <Button title="Register it on the web" icon="open-outline" variant="secondary" onPress={() => void register()} />
+        <ErrorText>{linkError}</ErrorText>
+      </Card>
       <Button title="Sign out" variant="ghost" onPress={() => void signOut()} />
     </Screen>
   );

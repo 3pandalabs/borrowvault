@@ -1,10 +1,13 @@
 import { Link } from "expo-router";
 import { useState } from "react";
-import { Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Pressable, Text, View } from "react-native";
 import { Button, ErrorText, Field, H1, P, Screen } from "../../src/components/ui";
 import { useAuth } from "../../src/hooks/useAuth";
+import { openWeb } from "../../src/lib/openWeb";
 import { colors } from "../../src/lib/theme";
 import { isValidEmail, normalisePhone } from "../../src/lib/validation";
+import { privacyUrl, termsUrl } from "../../src/lib/web";
 
 export default function SignUp() {
   const { signUp } = useAuth();
@@ -24,10 +27,16 @@ export default function SignUp() {
     password: password.length < 8 ? "At least 8 characters" : null,
   };
   const valid = !Object.values(errors).some(Boolean);
+  // Explicit consent (DPDP). Client-side only: the signup API is unchanged.
+  const [agreed, setAgreed] = useState(false);
 
   async function submit() {
     setTouched(true);
     if (!valid) return;
+    if (!agreed) {
+      setError("Please confirm you're 18 or older and agree to the Terms and Privacy Policy.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const res = await signUp({ email: email.trim(), password, displayName: displayName.trim(), phone: phoneN! });
@@ -43,6 +52,28 @@ export default function SignUp() {
       <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" error={touched ? errors.email : null} />
       <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="98765 43210" error={touched ? errors.phone : null} />
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry error={touched ? errors.password : null} />
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12 }}>
+        <Pressable
+          onPress={() => setAgreed((a) => !a)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agreed }}
+          accessibilityLabel="I am 18 or older and agree to the Terms and Privacy Policy"
+          hitSlop={8}
+        >
+          <Ionicons name={agreed ? "checkbox" : "square-outline"} size={22} color={colors.accent} />
+        </Pressable>
+        <Text style={{ flex: 1, color: colors.fgMuted }}>
+          {"I am 18 or older, and I agree to the "}
+          <Text style={{ color: colors.accent, fontWeight: "700" }} onPress={() => void openWeb(termsUrl())}>
+            Terms
+          </Text>
+          {" and "}
+          <Text style={{ color: colors.accent, fontWeight: "700" }} onPress={() => void openWeb(privacyUrl())}>
+            Privacy Policy
+          </Text>
+          {", including the use of my data as described there."}
+        </Text>
+      </View>
       <ErrorText>{error}</ErrorText>
       <Button title="Create account" onPress={submit} busy={busy} />
       <Text style={{ textAlign: "center", color: colors.fgMuted }}>

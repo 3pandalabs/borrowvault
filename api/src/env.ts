@@ -34,8 +34,9 @@ const schema = z.object({
   // Direct SMTP (a Gmail app password for 3pandalabs@gmail.com). With SMTP_USER
   // and SMTP_PASS set, mail goes out over SMTP and the gateway is skipped. This
   // exists because the gateway's only Resend domain belongs to RsvpVault.
+  // Port 587 (STARTTLS), not 465: Hetzner blocks outbound 25 and 465.
   SMTP_HOST: z.string().default("smtp.gmail.com"),
-  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_USER: optional,
   SMTP_PASS: optional,
   EMAIL_FROM_NAME: z.string().default("BorrowVault"),

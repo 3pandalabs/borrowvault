@@ -27,6 +27,7 @@ function smtp(): Transporter {
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
     secure: env.SMTP_PORT === 465,
+    requireTLS: env.SMTP_PORT !== 465, // never send credentials in clear on 587
     // Google shows app passwords as four groups; spaces are not part of it.
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS.replace(/\s+/g, "") },
     connectionTimeout: 10_000,

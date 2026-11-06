@@ -62,6 +62,7 @@ Edit `src/db/schema.ts`, run `npm run db:generate`, then **make the new SQL idem
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` | ✓ | ✓ | |
 | `R2_BUCKET` | ✓ | ✓ | default `borrowvault-evidence` (evidence/, proofs/, listings/ prefixes) |
 | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_TASK_QUEUE` | ✓ | ✓ | defaults `localhost:7233`, `default`, `borrowvault` |
+| `SMTP_USER`, `SMTP_PASS` (+ `SMTP_HOST`, `SMTP_PORT`) | opt | opt | production mail: Gmail app password; when set, the gateway is skipped |
 | `MAILER_URL`, `MAILER_TOKEN`, `EMAIL_FROM_NAME` | opt | opt | shared mail gateway (see below) |
 | `METRICS_TOKEN` | opt | | shared org token; unset → `/metrics` answers 503 |
 | `PORT` | opt | | default 8080 |

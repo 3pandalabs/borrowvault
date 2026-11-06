@@ -43,7 +43,8 @@ async function sendViaSmtp(messages: Mail[], log: (msg: string) => void): Promis
   let failed = 0;
   for (const m of messages) {
     try {
-      await smtp().sendMail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text });
+      const info = await smtp().sendMail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text });
+      log(`smtp sent: ${info.response}`);
       delivered++;
     } catch (err) {
       log(`smtp send failed: ${String(err)}`);
@@ -102,6 +103,24 @@ export async function sendMail(messages: Mail[], log: (msg: string) => void): Pr
 
 function esc(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * One paragraph + a button to an absolute URL, with the raw URL printed below it.
+ * The raw URL matters: Gmail disables links in Spam, and copy-paste still works.
+ */
+export function actionMail(to: string, subject: string, text: string, buttonLabel: string, url: string, footer: string): Mail {
+  return {
+    to,
+    subject,
+    text: `${text}\n\n${buttonLabel}:\n${url}\n\n${footer}`,
+    html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:520px;">
+  <p style="font-size:15px;line-height:1.6;">${esc(text)}</p>
+  <p style="margin:24px 0;"><a href="${esc(url)}" style="background:#047857;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;display:inline-block;">${esc(buttonLabel)}</a></p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;">Button not working? Copy this link into your browser:<br><span style="word-break:break-all;">${esc(url)}</span></p>
+  <p style="font-size:13px;line-height:1.6;color:#6b7280;">${esc(footer)}</p>
+</div>`,
+  };
 }
 
 /** Plain notification: one paragraph + optional link. Fail-soft like sendMail. */

@@ -1,9 +1,10 @@
 "use client";
 
-import { Building, Check, Copy, FileText, Gavel, KeyRound, Loader2, MapPin, Plus, Settings, Users, X } from "lucide-react";
+import { Building, Check, Copy, FileText, Gavel, KeyRound, Loader2, MapPin, Plus, Settings, ShieldCheck, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { SocietyAdminsList } from "@/components/adminRequests";
 import { EmptyState, ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle, selectClass, StateBadge } from "@/components/common";
 import { DISPUTE_CATEGORY } from "@/components/disputes";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,7 @@ const TABS = [
   { key: "members", label: "Members", icon: Users },
   { key: "towers", label: "Towers & invites", icon: Building },
   { key: "disputes", label: "Disputes", icon: Gavel },
+  { key: "admins", label: "Admins", icon: ShieldCheck },
   { key: "settings", label: "Settings", icon: Settings },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -46,11 +48,18 @@ function Admin() {
     return (
       <EmptyState
         title="You're not an admin of this society"
-        body="Society admins are assigned by 3PandaLabs when a society goes live."
+        body="Society admins are verified by BorrowVault. If you're on the committee, apply from your account with your committee's authorisation letter."
         action={
-          <Link href="/home">
-            <Button size="sm">Go home</Button>
-          </Link>
+          <>
+            <Link href={`/admin-requests/new?societyId=${societyId}`}>
+              <Button size="sm">Apply to be an admin</Button>
+            </Link>
+            <Link href="/home">
+              <Button size="sm" variant="outline">
+                Go home
+              </Button>
+            </Link>
+          </>
         }
       />
     );
@@ -77,6 +86,7 @@ function Admin() {
       {tab === "towers" ? <Towers societyId={societyId} /> : null}
       {tab === "disputes" ? <Disputes societyId={societyId} /> : null}
       {tab === "settings" ? <SocietySettings societyId={societyId} /> : null}
+      {tab === "admins" ? <Admins societyId={societyId} /> : null}
     </>
   );
 }
@@ -132,7 +142,10 @@ function Members({ societyId }: { societyId: string }) {
                   className={cn("flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-zinc-50", selected === m.id && "bg-emerald-50")}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-medium">{m.user.displayName}</span>
+                    <span className="flex items-center gap-1.5 truncate font-medium">
+                      {m.user.displayName}
+                      {m.role === "society_admin" ? <Badge variant="info">Admin</Badge> : null}
+                    </span>
                     <span className="text-sm text-fg-muted">
                       {m.towerName} · {m.flatNo} · {m.occupancy}
                     </span>
@@ -168,6 +181,9 @@ function Members({ societyId }: { societyId: string }) {
 }
 
 function MemberReview({ m, onChanged }: { m: AdminMembership; onChanged: () => void }) {
+  const { user } = useSession();
+  // Only platform admins can reject or revoke an admin membership (403 admin_membership_platform_only).
+  const adminLocked = m.role === "society_admin" && !user.isPlatformAdmin;
   const [note, setNote] = useState("");
   const action = useAction();
   const proof = useAsync(() => api.storageUrl(m.proofKey!), m.proofKey ? `proof:${m.proofKey}` : null);
@@ -176,7 +192,16 @@ function MemberReview({ m, onChanged }: { m: AdminMembership; onChanged: () => v
 
   return (
     <Panel>
-      <PanelTitle aside={<Badge variant="muted">{m.status}</Badge>}>{m.user.displayName}</PanelTitle>
+      <PanelTitle
+        aside={
+          <span className="flex gap-1">
+            {m.role === "society_admin" ? <Badge variant="info">Admin</Badge> : null}
+            <Badge variant="muted">{m.status}</Badge>
+          </span>
+        }
+      >
+        {m.user.displayName}
+      </PanelTitle>
       <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-fg-muted">Flat</dt>
         <dd>
@@ -213,6 +238,12 @@ function MemberReview({ m, onChanged }: { m: AdminMembership; onChanged: () => v
         </div>
       )}
 
+      {adminLocked && (m.status === "pending" || m.status === "approved") ? (
+        <p className="mb-3 rounded-lg bg-sky-50 p-3 text-sm text-sky-900">
+          {m.user.displayName} is a society admin. Only BorrowVault can {m.status === "pending" ? "reject" : "remove"} an
+          admin: write to 3PandaLabs if they should step down.
+        </p>
+      ) : null}
       {m.status === "pending" ? (
         <div className="space-y-2">
           <Input placeholder="Note to the resident (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -220,12 +251,14 @@ function MemberReview({ m, onChanged }: { m: AdminMembership; onChanged: () => v
             <Button disabled={action.busy} onClick={() => act(() => api.approveMembership(m.id, note.trim() || undefined))}>
               <Check /> Approve
             </Button>
-            <Button variant="outline" disabled={action.busy} onClick={() => act(() => api.rejectMembership(m.id, note.trim() || undefined))}>
-              <X /> Reject
-            </Button>
+            {adminLocked ? null : (
+              <Button variant="outline" disabled={action.busy} onClick={() => act(() => api.rejectMembership(m.id, note.trim() || undefined))}>
+                <X /> Reject
+              </Button>
+            )}
           </div>
         </div>
-      ) : m.status === "approved" ? (
+      ) : m.status === "approved" && !adminLocked ? (
         <Button
           variant="destructive"
           disabled={action.busy}
@@ -541,5 +574,39 @@ function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Soc
         </div>
       </form>
     </Panel>
+  );
+}
+
+// ---------- admins ----------
+
+function Admins({ societyId }: { societyId: string }) {
+  const { user } = useSession();
+  const admins = useAsync(() => api.societyAdmins(societyId), `admins:${societyId}`);
+  return (
+    <div className="max-w-2xl">
+      <Panel>
+        <PanelTitle>Society admins</PanelTitle>
+        <p className="mb-3 text-sm text-fg-muted">
+          To add an admin, the resident applies from their account; BorrowVault verifies their documents. Only BorrowVault
+          can remove an admin.
+        </p>
+        {admins.error ? (
+          <LoadError error={admins.error} onRetry={admins.reload} />
+        ) : !admins.data ? (
+          <Loading />
+        ) : (
+          <SocietyAdminsList admins={admins.data} />
+        )}
+        {user.isPlatformAdmin ? (
+          <p className="mt-3 text-xs text-fg-muted">
+            Platform admin: remove admins from{" "}
+            <Link href="/platform?tab=societies" className="text-accent hover:underline">
+              Platform › Societies
+            </Link>
+            .
+          </p>
+        ) : null}
+      </Panel>
+    </div>
   );
 }

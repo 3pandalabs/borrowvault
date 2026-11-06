@@ -6,6 +6,7 @@ import { env } from "./env.js";
 import { DomainError } from "./lib/errors.js";
 import { recordRequest, startCpuSampler } from "./metrics/collector.js";
 import { adminRoutes } from "./routes/admin.js";
+import { adminRequestRoutes } from "./routes/adminRequests.js";
 import { authRoutes } from "./routes/auth.js";
 import { bookingRoutes } from "./routes/bookings.js";
 import { listingRoutes } from "./routes/listings.js";
@@ -57,6 +58,7 @@ app.setErrorHandler((err: FastifyError & { code?: string; publicCode?: string },
 await app.register(authRoutes);
 await app.register(societyRoutes);
 await app.register(adminRoutes);
+await app.register(adminRequestRoutes);
 await app.register(listingRoutes);
 await app.register(bookingRoutes);
 await app.register(metricsRoutes);

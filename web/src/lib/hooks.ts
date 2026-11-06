@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 type Result<T> = { key: string; data?: T; error?: unknown };
 
@@ -44,6 +44,23 @@ export function useAsync<T>(fn: () => Promise<T>, key: string | null) {
     reload,
     setData,
   };
+}
+
+const noopSubscribe = () => () => undefined;
+
+/**
+ * The `?next=` path to land on after sign-in/sign-up, or null. Only same-site
+ * absolute paths are honoured (no `//host` or `/\host`), so it can't be used as
+ * an open redirect. Read via useSyncExternalStore so the auth pages don't need
+ * a Suspense boundary for useSearchParams.
+ */
+export function useNextPath(): string | null {
+  const raw = useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get("next"),
+    () => null,
+  );
+  return raw && /^\/(?![/\\])/.test(raw) ? raw : null;
 }
 
 /** Wraps an async action with busy + error state for buttons/forms. */

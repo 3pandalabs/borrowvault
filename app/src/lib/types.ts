@@ -47,7 +47,42 @@ export type Society = {
   status: string;
 };
 
-export type PresignPurpose = "proof" | "listing_photo";
+export type PresignPurpose = "proof" | "listing_photo" | "admin_doc";
+
+// ---- Admin requests (becoming a society admin; submitted on the web) ----
+
+export type AdminRequestKind = "new_society" | "join_admin";
+export type AdminRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+export type AdminRequest = {
+  id: string;
+  kind: AdminRequestKind;
+  status: AdminRequestStatus;
+  requesterId: string;
+  /** join_admin: always set. new_society: null until approved, then the new society's id. */
+  societyId: string | null;
+  /** join_admin: the society's name. new_society: the proposed name. */
+  societyName: string;
+  /** new_society only, as submitted (approval overrides aren't reflected here). */
+  proposedSociety: {
+    name: string;
+    city: string;
+    address: string;
+    centerLat: number;
+    centerLng: number;
+    radiusM: number;
+    towerName: string;
+    flatNo: string;
+    occupancy: Occupancy;
+  } | null;
+  committeeRole: string;
+  statement: string | null;
+  docs: { rwaRegistrationKey: string | null; authorizationKey: string; idProofKey: string };
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // ---- Listings ----
 

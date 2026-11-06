@@ -35,8 +35,8 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 | GET | `/societies?q=` | – | Search live societies → `[{id, name, city}]` |
 | GET | `/societies/:id/towers` | – | → `[{id, name}]` (used to pick a tower + flat number at join time) |
 | POST | `/societies/:id/join` | ✓ | `{inviteCode?, towerId, flatNo, occupancy: "owner"\|"tenant"\|"family", proofKey?}` → `Membership` (status `pending`). A valid invite code for the tower records `via: "invite"`. The unit is created if missing. |
-| POST | `/storage/presign` | ✓ | `{purpose: "proof"\|"listing_photo", mime, bytes}` → `{key, uploadUrl}` (proof ≤10 MB pdf/jpeg/png; listing photo ≤8 MB jpeg/png/webp) |
-| GET | `/storage/url?key=` | ✓ | → `{url}` (presigned GET; only the uploader, society admins of a related membership, or booking parties) |
+| POST | `/storage/presign` | ✓ | `{purpose: "proof"\|"listing_photo"\|"admin_doc", mime, bytes}` → `{key, uploadUrl}` (proof ≤10 MB pdf/jpeg/png; listing photo ≤8 MB jpeg/png/webp; admin_doc ≤10 MB pdf/jpeg/png, key under `admin-docs/`). PUT the file to `uploadUrl` with exactly that `Content-Type` and `Content-Length` (URL valid 5 min). Every presign returns a fresh key; no route overwrites or deletes an upload. |
+| GET | `/storage/url?key=` | ✓ | → `{url}` (presigned GET, 10 min; only the uploader, society admins of a related membership, or booking parties). `admin_doc` keys: **only the uploader and platform admins** (society admins get 404 like everyone else). |
 
 `Membership = {id, societyId, societyName, towerName, flatNo, role: "resident"|"society_admin", status: "pending"|"approved"|"rejected"|"revoked", occupancy, createdAt}`
 
@@ -47,6 +47,7 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 | GET | `/admin/societies/:id/memberships?status=pending` | → `[Membership & {user:{id,displayName,email,phone}, proofKey|null}]` |
 | POST | `/admin/memberships/:id/approve` · `/reject` | `{note?}` → `Membership` |
 | POST | `/admin/memberships/:id/revoke` | → `Membership` |
+| GET | `/admin/societies/:id/admins` | → `SocietyAdmin[]` (read-only; same shape as the platform list) |
 | POST | `/admin/societies/:id/towers` | `{name}` → tower |
 | GET | `/admin/societies/:id` | → `Society` (for the settings form) |
 | POST | `/admin/societies/:id/invite-codes` | `{towerId}` → `{code, expiresAt}` (8 chars, 30 days) |
@@ -54,12 +55,93 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 | PATCH | `/admin/societies/:id` | `{centerLat?, centerLng?, radiusM?, settings?}` (`settings.depositMode: "declared"\|"p2p"`) |
 | GET | `/admin/societies/:id/disputes?status=open\|resolved` | → `[Dispute & {booking: Booking}]` (`open` = any unresolved status; any exact `Dispute.status` value also works; `booking.myRole` is `"admin"`) |
 
+Society admins can't make anyone an admin (only an approved admin request does, see "Admin requests"), and can't remove one: `POST /admin/memberships/:id/reject` and `/revoke` answer 403 `{error: "admin_membership_platform_only", code: "FORBIDDEN"}` when the target membership has role `society_admin`, unless the caller is a platform admin. A society admin also still can't review their own membership.
+
 `Society = {id, name, city, centerLat, centerLng, radiusM, settings: {depositMode: "declared"|"p2p"}, status}`
 
 ### Platform admin (`users.is_platform_admin`)
 
-| POST | `/platform/societies` | `{name, city, centerLat, centerLng, radiusM, adminUserEmail}` → `Society` (status `live`); makes that (already signed-up) user an approved `society_admin`; 400 if no such user |
-| GET | `/platform/societies` | → `Society[]` (all statuses). Non-platform-admins get 403. |
+Every `/platform/*` route answers 403 `{error: "platform_admin_required", code: "FORBIDDEN"}` to anyone who isn't a platform admin.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/platform/societies` | `{name, city, centerLat, centerLng, radiusM, adminUserEmail}` → `Society` (status `live`); makes that (already signed-up) user an approved `society_admin` (no unit). 400 if no such user. Direct creation for platform staff only; **the normal path is a self-serve `new_society` admin request** (below). |
+| GET | `/platform/societies` | → `Society[]` (all statuses). |
+| GET | `/platform/admin-requests?status=pending\|approved\|rejected\|withdrawn` | default `pending` → `PlatformAdminRequest[]`. `pending` is oldest first (a review queue); other statuses newest first. Max 200. |
+| POST | `/platform/admin-requests/:id/approve` | `{note?: string (≤1000), centerLat?, centerLng?, radiusM? (int 50–5000)}` → `PlatformAdminRequest` (status `approved`). The geofence overrides apply to `new_society` only (ignored for `join_admin`); without them the requester's proposed values are used. One transaction: **new_society** creates the society (status `live`, default settings = `declared` deposits), the tower `towerName`, the unit `flatNo` (uppercased), and an approved `society_admin` membership for the requester on that unit (so the admin is also a resident of their flat; occupancy as requested); `societyId` is then set on the request. **join_admin** flips the requester's membership role to `society_admin`; 409 `{error: "membership_not_active", code: "CONFLICT"}` if that membership is no longer approved. 409 `{error: "not_pending", code: "CONFLICT"}` if the request isn't pending (e.g. withdrawn or reviewed concurrently). 404 unknown id. The requester is emailed (best effort). |
+| POST | `/platform/admin-requests/:id/reject` | `{note: string (5–1000), required}` → `PlatformAdminRequest` (status `rejected`). 409 `not_pending`. The requester is emailed the note (best effort). |
+| GET | `/platform/societies/:id/admins` | → `SocietyAdmin[]` (404 unknown society). |
+| POST | `/platform/societies/:id/admins/:membershipId/revoke-admin` | `{note: string (5–1000), required}` → `SocietyAdmin[]` (the society's remaining admins). Demotes that membership to `resident`; it stays `approved`. 404 if the membership isn't in that society; 409 `{error: "not_admin", code: "CONFLICT"}` if it isn't an approved `society_admin`. Allowed even if it leaves the society with 0 admins: disputes then have no society arbiter, and they escalate to the platform after 72 h exactly as today (platform admins can always rule). The note is stored as the membership's review note and emailed to the person (best effort). |
+
+`SocietyAdmin = {membershipId, user: {id, displayName, email, phone}, towerName: string|null, flatNo: string|null, since}`. `since` = when they became admin (ISO). Sorted oldest admin first. `towerName`/`flatNo` are null for admins created by direct `POST /platform/societies`.
+
+## Admin requests (becoming a society admin)
+
+Nobody becomes a `society_admin` without a platform admin approving a request backed by documents. Two kinds:
+
+- `new_society`: "register my society on BorrowVault and make me its admin". Any signed-in user.
+- `join_admin`: "make me an (additional) admin of a society I already live in". Needs an **approved** membership in that society.
+
+Documents are uploaded first with `POST /storage/presign {purpose: "admin_doc"}` (pdf/jpeg/png, ≤10 MB), then their keys go in `docs`. Every key must be **the caller's own** `admin_doc` upload and the keys must be distinct (400 `VALIDATION` otherwise).
+
+| Doc | `new_society` | `join_admin` | What it is (UI guidance) |
+|---|---|---|---|
+| `rwaRegistrationKey` | required | not accepted (400) | RWA / society registration certificate |
+| `authorizationKey` | required | required | Letter on RWA letterhead, or a committee resolution, authorising this person as the society's BorrowVault admin |
+| `idProofKey` | required | required | The requester's own ID / address proof. Advise a **masked** Aadhaar (only the last 4 digits visible) or a utility bill |
+
+| Method | Path | Auth | Body → Response |
+|---|---|---|---|
+| POST | `/admin-requests` | ✓ | Body is discriminated on `kind` (below) → 201 `AdminRequest` (status `pending`). Rate limited: 10 per hour per client IP (429 `{error: "rate_limited"}`). The platform admins are emailed (best effort). |
+| GET | `/admin-requests/mine` | ✓ | → `AdminRequest[]`, newest first (all statuses). |
+| POST | `/admin-requests/:id/withdraw` | ✓ | no body → `AdminRequest` (status `withdrawn`). Own requests only (404 otherwise); 409 `{error: "not_pending", code: "CONFLICT"}` if it isn't pending. |
+
+`new_society` body:
+
+```
+{kind: "new_society", societyName (2–120), city (2–80), address (5–500),
+ centerLat (-90..90), centerLng (-180..180), radiusM (int 50–5000),
+ towerName (1–60), flatNo (1–20), occupancy: "owner"|"tenant"|"family",
+ committeeRole (2–60, e.g. "Secretary", "President", "Committee member"), statement? (≤1000),
+ docs: {rwaRegistrationKey, authorizationKey, idProofKey}}
+```
+
+409 `{error: "request_pending", code: "CONFLICT"}` if the caller already has a pending `new_society` request (one at a time per user).
+
+`join_admin` body:
+
+```
+{kind: "join_admin", societyId (uuid), committeeRole (2–60), statement? (≤1000),
+ docs: {authorizationKey, idProofKey}}
+```
+
+404 if the caller has no **approved** membership in that society (pending/revoked/none look the same: no existence leak). 409 `{error: "already_admin", code: "CONFLICT"}` if they're already its `society_admin`. 409 `{error: "request_pending", code: "CONFLICT"}` if they already have a pending `join_admin` request for that society.
+
+String fields are trimmed. Withdrawn or rejected requests don't block a new one.
+
+```
+AdminRequest = {
+  id, kind: "new_society"|"join_admin",
+  status: "pending"|"approved"|"rejected"|"withdrawn",
+  requesterId,
+  societyId: string|null,      // join_admin: always set. new_society: null until approved, then the new society's id
+  societyName: string,         // join_admin: the society's name. new_society: the proposed name
+  proposedSociety: {name, city, address, centerLat, centerLng, radiusM, towerName, flatNo,
+                    occupancy: "owner"|"tenant"|"family"} | null,   // new_society only, as submitted (approval overrides aren't reflected here)
+  committeeRole, statement: string|null,
+  docs: {rwaRegistrationKey: string|null, authorizationKey, idProofKey},
+  reviewNote: string|null, reviewedAt: string|null,
+  createdAt, updatedAt
+}
+
+PlatformAdminRequest = AdminRequest & {
+  requester: {id, displayName, email, phone},
+  society: {id, name, city} | null,   // the existing society (join_admin, or new_society once approved)
+  docUrls: {rwaRegistration?: string, authorization: string, idProof: string}   // presigned GETs, 10 min; rwaRegistration only for new_society
+}
+```
+
+The requester can open their own documents with `GET /storage/url?key=` (keys are in `docs`).
 
 ## Listings
 
@@ -139,4 +221,4 @@ UPI intent format: `upi://pay?pa=<vpa>&pn=<urlencoded name>&am=<rupees with 2 de
 ## Ops
 
 | GET | `/health` | → `{ok: true, commit, startedAt}` |
-| GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"` |
+| GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"`. `counts` keys: `users, liveSocieties, approvedMembers, pendingMembers, adminRequestsPending, activeListings, bookings, openBookings, completedBookings, openDisputes, activeSessions` |

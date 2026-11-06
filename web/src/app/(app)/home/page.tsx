@@ -102,9 +102,16 @@ export default function HomePage() {
                   title="Join your society"
                   body="Find your society, pick your tower and flat, and upload a proof of residence."
                   action={
-                    <Link href="/onboarding">
-                      <Button size="sm">Join a society</Button>
-                    </Link>
+                    <>
+                      <Link href="/onboarding">
+                        <Button size="sm">Join a society</Button>
+                      </Link>
+                      <Link href="/societies/register">
+                        <Button size="sm" variant="outline">
+                          Register your society
+                        </Button>
+                      </Link>
+                    </>
                   }
                 />
               )}
@@ -144,6 +151,14 @@ export default function HomePage() {
                   {m.role === "society_admin" && m.status === "approved" ? (
                     <Link href={`/admin/${m.societyId}`} className="mt-2 inline-block text-sm text-accent hover:underline">
                       Open admin console
+                    </Link>
+                  ) : null}
+                  {m.role !== "society_admin" && m.status === "approved" ? (
+                    <Link
+                      href={`/admin-requests/new?societyId=${m.societyId}`}
+                      className="mt-2 block text-xs text-fg-muted hover:text-fg hover:underline"
+                    >
+                      On the committee? Become an admin
                     </Link>
                   ) : null}
                 </li>

@@ -22,6 +22,7 @@ type CountsRow = {
   live_societies: number;
   approved_members: number;
   pending_members: number;
+  admin_requests_pending: number;
   active_listings: number;
   bookings: number;
   open_bookings: number;
@@ -45,6 +46,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         (select count(*) from societies where status = 'live')::int as live_societies,
         (select count(*) from memberships where status = 'approved')::int as approved_members,
         (select count(*) from memberships where status = 'pending')::int as pending_members,
+        (select count(*) from admin_requests where status = 'pending')::int as admin_requests_pending,
         (select count(*) from listings where status = 'active')::int as active_listings,
         (select count(*) from bookings)::int as bookings,
         (select count(*) from bookings where state in ('REQUESTED','ACCEPTED','DEPOSIT_HELD','HANDOVER_PENDING','ACTIVE','OVERDUE','RETURN_PENDING'))::int as open_bookings,
@@ -71,6 +73,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         liveSocieties: c.live_societies,
         approvedMembers: c.approved_members,
         pendingMembers: c.pending_members,
+        adminRequestsPending: c.admin_requests_pending,
         activeListings: c.active_listings,
         bookings: c.bookings,
         openBookings: c.open_bookings,

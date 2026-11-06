@@ -116,6 +116,15 @@ export default function OnboardingPage() {
           </Button>
         </form>
         {results.loading ? <p className="mt-3 text-sm text-fg-muted">Searching…</p> : null}
+        {results.data?.length && !results.loading ? (
+          <p className="mt-3 text-xs text-fg-muted">
+            Society not listed?{" "}
+            <Link href="/societies/register" className="text-accent hover:underline">
+              Register it
+            </Link>{" "}
+            (for RWA and committee members).
+          </p>
+        ) : null}
         {results.error ? <ErrorText>{errorMessage(results.error)}</ErrorText> : null}
         {results.data && !results.loading ? (
           results.data.length ? (
@@ -142,13 +151,13 @@ export default function OnboardingPage() {
             <div className="mt-3">
               <EmptyState
                 title="No live society matches that"
-                body="BorrowVault opens one society at a time. Ask your society committee to write to 3PandaLabs to get yours set up, or try a different spelling."
+                body="Try a different spelling. If your society isn't on BorrowVault yet, a committee member can register it: BorrowVault checks the RWA's documents and opens it."
                 action={
-                  <a href="mailto:hello@3pandalabs.com?subject=BorrowVault%20for%20our%20society">
+                  <Link href="/societies/register">
                     <Button size="sm" variant="outline">
-                      Request your society
+                      Society not listed? Register it
                     </Button>
-                  </a>
+                  </Link>
                 }
               />
             </div>

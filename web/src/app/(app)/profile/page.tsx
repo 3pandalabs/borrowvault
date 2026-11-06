@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { ErrorText, Field, PageHeader, Panel, PanelTitle, TrustBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { PHONE_RE, VPA_RE } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
 export default function ProfilePage() {
-  const { user, memberships, setMe } = useSession();
+  const { user, memberships, approved, setMe } = useSession();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [phone, setPhone] = useState(user.phone);
   const [upiVpa, setUpiVpa] = useState(user.upiVpa ?? "");
@@ -97,6 +98,55 @@ export default function ProfilePage() {
             ) : null}
           </div>
         </form>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelTitle
+          aside={
+            <Link href="/admin-requests" className="text-sm text-accent hover:underline">
+              My requests
+            </Link>
+          }
+        >
+          Society admin
+        </PanelTitle>
+        <p className="mb-3 text-sm text-fg-muted">
+          On your society&apos;s RWA or committee? Register your society, or apply to be one of its admins. BorrowVault
+          verifies every admin against committee documents.
+        </p>
+        <ul className="divide-y divide-line rounded-xl border border-line">
+          <li>
+            <Link href="/societies/register" className="flex items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-zinc-50">
+              Register a new society <ChevronRight className="size-4 text-fg-muted" />
+            </Link>
+          </li>
+          {approved.map((m) =>
+            m.role === "society_admin" ? (
+              <li key={m.id}>
+                <Link href={`/admin/${m.societyId}`} className="flex items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-zinc-50">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="size-4 text-accent" /> Admin of {m.societyName}
+                  </span>
+                  <ChevronRight className="size-4 text-fg-muted" />
+                </Link>
+              </li>
+            ) : (
+              <li key={m.id}>
+                <Link
+                  href={`/admin-requests/new?societyId=${m.societyId}`}
+                  className="flex items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-zinc-50"
+                >
+                  Become an admin of {m.societyName} <ChevronRight className="size-4 text-fg-muted" />
+                </Link>
+              </li>
+            ),
+          )}
+          <li>
+            <Link href="/admin-requests" className="flex items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-zinc-50">
+              My admin requests <ChevronRight className="size-4 text-fg-muted" />
+            </Link>
+          </li>
+        </ul>
       </Panel>
     </div>
   );

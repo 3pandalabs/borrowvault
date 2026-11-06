@@ -9,7 +9,7 @@ import { approvedSocietyIds, isPlatformAdmin, isSocietyAdmin } from "../lib/auth
 import { conflict, invalid, notFound } from "../lib/errors.js";
 import { UPI_VPA_RE } from "../lib/upi.js";
 import { membershipById, membershipsOf, userView } from "../lib/users.js";
-import { listingPhotoKey, parseKey, presignDownload, presignUpload, proofKey } from "../plugins/r2.js";
+import { adminDocKey, listingPhotoKey, parseKey, presignDownload, presignUpload, proofKey } from "../plugins/r2.js";
 import { phoneSchema } from "./auth.js";
 
 const uuid = z.string().uuid();
@@ -157,12 +157,15 @@ export async function societyRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // --- storage (proofs, listing photos). Evidence uses /bookings/:id/media/* ---
+  // --- storage (proofs, listing photos, admin docs). Evidence uses /bookings/:id/media/* ---
 
   const PURPOSES = {
     proof: { mimes: ["application/pdf", "image/jpeg", "image/png"], max: 10 * 1024 * 1024 },
     listing_photo: { mimes: ["image/jpeg", "image/png", "image/webp"], max: 8 * 1024 * 1024 },
+    // Admin-request documents (RWA certificate, authorisation letter, ID proof).
+    admin_doc: { mimes: ["application/pdf", "image/jpeg", "image/png"], max: 10 * 1024 * 1024 },
   } as const;
+  const KEY_FOR = { proof: proofKey, listing_photo: listingPhotoKey, admin_doc: adminDocKey } as const;
 
   app.post(
     "/storage/presign",
@@ -170,7 +173,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         body: z.object({
-          purpose: z.enum(["proof", "listing_photo"]),
+          purpose: z.enum(["proof", "listing_photo", "admin_doc"]),
           mime: z.string().max(100),
           bytes: z.number().int().positive(),
         }),
@@ -180,7 +183,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
       const rule = PURPOSES[req.body.purpose];
       if (!(rule.mimes as readonly string[]).includes(req.body.mime)) throw invalid(`mime must be one of ${rule.mimes.join(", ")}`);
       if (req.body.bytes > rule.max) throw invalid(`file must be at most ${rule.max / 1024 / 1024} MB`);
-      const key = req.body.purpose === "proof" ? proofKey(req.userId!, req.body.mime) : listingPhotoKey(req.userId!, req.body.mime);
+      const key = KEY_FOR[req.body.purpose](req.userId!, req.body.mime);
       return { key, uploadUrl: await presignUpload(key, req.body.mime, req.body.bytes) };
     },
   );
@@ -207,6 +210,9 @@ export async function societyRoutes(fastify: FastifyInstance) {
             .where(sql`${listings.photoKeys} @> ${JSON.stringify([key])}::jsonb`);
           allowed = rows.some((r) => mine.includes(r.societyId));
         }
+      } else if (!allowed && parsed.kind === "admin_doc") {
+        // Identity documents: the uploader and platform admins only, never society admins.
+        allowed = await isPlatformAdmin(me);
       } else if (!allowed && parsed.kind === "evidence") {
         const [b] = await db.select().from(bookings).where(eq(bookings.id, parsed.bookingId));
         if (b) {

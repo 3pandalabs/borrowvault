@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, errorMessage, setTokens, signup } from "@/lib/api";
 import { PHONE_RE } from "@/lib/format";
+import { useNextPath } from "@/lib/hooks";
 
 export default function SignupPage() {
   const router = useRouter();
+  const next = useNextPath();
   const [form, setForm] = useState({ displayName: "", email: "", phone: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,7 @@ export default function SignupPage() {
     try {
       const res = await signup({ ...form, phone });
       setTokens(res.accessToken, res.refreshToken);
-      router.push("/onboarding");
+      router.push(next ?? "/onboarding");
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 409
@@ -74,7 +76,7 @@ export default function SignupPage() {
       </form>
       <p className="mt-4 text-center text-sm text-fg-muted">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-accent hover:underline">
+        <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-medium text-accent hover:underline">
           Sign in
         </Link>
       </p>

@@ -33,5 +33,8 @@ export function toHttpFailure(err: unknown): HttpFailure {
   if (name === "WorkflowTimeout") {
     return { status: 503, body: { error: "booking service is busy, try again", code: "UNAVAILABLE" } };
   }
+  // Unmapped: log it, or the 500 is undebuggable (e.g. "UpdateWorkflowExecution
+  // operation is disabled on this namespace" was invisible until this line).
+  console.error("[temporal] unmapped workflow error:", name, message);
   return { status: 500, body: { error: "internal_error" } };
 }

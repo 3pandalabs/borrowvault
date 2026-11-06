@@ -258,8 +258,15 @@ export const requestPasswordReset = (email: string) =>
 // ---------------- Profile ----------------
 
 export const getMe = () => get<Me>("/me");
-export const updateMe = (body: { displayName?: string; phone?: string; upiVpa?: string }) =>
+export const updateMe = (body: { displayName?: string; phone?: string; upiVpa?: string; chatPushEnabled?: boolean }) =>
   patch<{ user: User }>("/me", body);
+
+// ---------------- Push tokens ----------------
+
+export const registerPushToken = (token: string, platform: "ios" | "android") =>
+  post<void>("/me/push-tokens", { token, platform });
+export const deletePushToken = (token: string) =>
+  request<void>("/me/push-tokens", { method: "DELETE", body: { token } });
 
 // ---------------- Societies ----------------
 

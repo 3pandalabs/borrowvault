@@ -34,6 +34,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
           displayName: z.string().trim().min(1).max(120).optional(),
           phone: phoneSchema.optional(),
           upiVpa: z.string().regex(UPI_VPA_RE, "invalid UPI ID").nullable().optional(),
+          chatPushEnabled: z.boolean().optional(),
         }),
       },
     },
@@ -45,6 +46,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
           ...(patch.displayName !== undefined ? { displayName: patch.displayName } : {}),
           ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
           ...(patch.upiVpa !== undefined ? { upiVpa: patch.upiVpa } : {}),
+          ...(patch.chatPushEnabled !== undefined ? { chatPushEnabled: patch.chatPushEnabled } : {}),
         })
         .where(eq(users.id, req.userId!))
         .returning();

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Switch, Text, View } from "react-native";
 import { Button, Card, Chip, ErrorText, Field, H2, KV, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -44,6 +44,8 @@ export default function Profile() {
 
       {/* Keyed on the saved values so a server refresh resets the form without an effect. */}
       <DetailsForm key={`${user.displayName}|${user.phone}|${user.upiVpa}`} user={user} />
+
+      <NotificationsCard user={user} />
 
       <Card>
         <H2 right={<Button title="Join another" variant="ghost" onPress={() => router.push("/onboarding")} />}>My societies</H2>
@@ -157,6 +159,39 @@ function SocietyAdminCard({
       ) : (
         <P muted>Track the admin requests you&apos;ve sent from the BorrowVault website.</P>
       )}
+    </Card>
+  );
+}
+
+/** PATCH /me {chatPushEnabled}: chat push on/off for all of this user's devices. */
+function NotificationsCard({ user }: { user: User }) {
+  const { setUser } = useAuth();
+  const save = useAction();
+
+  async function toggle(next: boolean) {
+    await save.run(async () => {
+      const res = await updateMe({ chatPushEnabled: next });
+      setUser(res.user);
+    });
+  }
+
+  return (
+    <Card>
+      <H2>Notifications</H2>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: "700", color: colors.fg }}>Chat notifications</Text>
+          <P muted>A notification when a neighbour messages you about a listing or booking.</P>
+        </View>
+        <Switch
+          value={user.chatPushEnabled}
+          onValueChange={(v) => void toggle(v)}
+          disabled={save.busy}
+          trackColor={{ true: colors.accent }}
+          accessibilityLabel="Chat notifications"
+        />
+      </View>
+      <ErrorText>{save.error}</ErrorText>
     </Card>
   );
 }

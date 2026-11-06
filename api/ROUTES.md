@@ -22,11 +22,15 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 | POST | `/auth/refresh` | – | `{refreshToken}` → same |
 | POST | `/auth/logout` | ✓ | `{refreshToken}` → 204 always; the session is deleted only if the token verifies and belongs to the caller |
 | POST | `/auth/password-reset/request` | – | `{email}` → 204 **always** (no account enumeration). Emails a link to `https://borrowvault.3pandalabs.com/reset-password?token=…` (`WEB_ORIGIN`; the web page handles it, the app just opens that URL) (30 min, single use). Same work (hashing) for unknown emails; mail is sent in the background. |
-| POST | `/auth/password-reset/confirm` | – | `{token, password}` → 204 (kills all sessions); 400 `invalid_or_expired_token` |
+| POST | `/auth/password-reset/confirm` | – | `{token, password}` → 204 (kills all sessions **and deletes all the user's push tokens**); 400 `invalid_or_expired_token` |
 | GET | `/me` | ✓ | → `{user, memberships: Membership[]}` |
-| PATCH | `/me` | ✓ | `{displayName?, phone?, upiVpa?}` → `{user}`. `upiVpa` is validated as `^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$`; it is required before you can lend. |
+| PATCH | `/me` | ✓ | `{displayName?, phone?, upiVpa?, chatPushEnabled?: boolean}` → `{user}`. `upiVpa` is validated as `^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$`; it is required before you can lend. `chatPushEnabled: false` stops chat push notifications to all your devices (default `true`). |
+| POST | `/me/push-tokens` | ✓ | `{token, platform: "ios"\|"android"}` → **204**. Registers this device for push. `token` must be an Expo push token matching `^Expo(nent)?PushToken\[[^\]\s]{1,200}\]$` (else 400 `VALIDATION`). Upsert on `token`: re-registering refreshes `last_seen_at`, and a token already registered to another user is **moved** to the caller (one device = one signed-in account). The app calls it on every app start and sign-in. Rate limited: 20 / hour per user → 429 `{error: "rate_limited"}`. |
+| DELETE | `/me/push-tokens` | ✓ | `{token}` (JSON body, 1–300 chars) → **204** always. Unregisters that token if it belongs to the caller (someone else's token is left alone, still 204). The app calls it on sign-out, **before** `POST /auth/logout`. Rate limited: 30 / hour per user. |
 
-`user = {id, email, displayName, phone, upiVpa|null, isPlatformAdmin, trust: {score, completed, disputesLost}}`
+`user = {id, email, displayName, phone, upiVpa|null, isPlatformAdmin, chatPushEnabled: boolean, trust: {score, completed, disputesLost}}`
+
+There is no account-deletion or sign-out-everywhere route. If one is added, it must delete the user's push tokens too (as the password-reset confirm does).
 
 ## Societies & membership
 
@@ -211,7 +215,7 @@ UPI intent format: `upi://pay?pa=<vpa>&pn=<urlencoded name>&am=<rupees with 2 de
 
 One **conversation per (listing, borrower)**. Its participants are exactly the listing owner (`myRole: "owner"`) and that borrower (`myRole: "borrower"`). A prospective borrower opens it from a listing ("Ask a question") before booking; the same conversation carries on through every booking of that listing by that borrower. Text only. **Messages are immutable**: there is no edit or delete route (they can be dispute evidence), and the database rejects UPDATE/DELETE on messages.
 
-**Delivery is polling** (no websockets/push). While a chat is open, poll `GET /conversations/:id/messages?after=<id of the newest message you hold>` about every 5 s; use `GET /conversations/unread` for badges. There are **no push notifications and no chat emails** in Phase 1.
+**Delivery is polling** (no websockets). While a chat is open, poll `GET /conversations/:id/messages?after=<id of the newest message you hold>` about every 5 s; use `GET /conversations/unread` for badges. A new message also sends a **push notification** to the other participant's registered app devices (see "Push notifications" below). There are **no chat emails** in Phase 1.
 
 | Method | Path | Who | Body → Response |
 |---|---|---|---|
@@ -264,6 +268,24 @@ ConversationSummary = {
   activeBookingId: string|null
 }
 ```
+
+### Push notifications (Expo push service)
+
+Sending a message (`POST /conversations/:id/messages`) notifies the **other participant** only: never the sender, and never admins (admins only read). Delivery is best effort and **fire-and-forget**: the push runs in the background and can never delay or fail the send route (still 201).
+
+- **Who.** Skipped when the recipient has `chatPushEnabled: false` or no registered tokens. Every token the recipient has registered gets the message.
+- **Payload.** `POST https://exp.host/--/api/v2/push/send`, JSON array in batches of ≤ 100, 5 s timeout. `Authorization: Bearer <EXPO_ACCESS_TOKEN>` is sent only when that optional env var is set.
+  ```
+  { to: <token>,
+    title: <sender displayName>,
+    body: "<listing title>: <message preview>",   // preview = the message, truncated to 100 chars ("…" when cut)
+    data: { type: "chat", conversationId },
+    sound: "default", priority: "high",
+    channelId: "chat" }                          // the app's Android "Messages" channel
+  ```
+- **Throttle.** At most **one push per (conversation, recipient) per 60 s**, **unless** the recipient has read past the previously pushed message (their read marker ≥ its sequence); then the next message pushes straight away. The throttle state is **in memory, per API process** (borrowvault-api is one container; a restart forgets it, which at worst sends one extra push).
+- **Tickets.** A ticket with `details.error: "DeviceNotRegistered"` deletes that token. Other ticket errors and transport failures are logged and dropped (no retry). Push **receipts are not polled** in Phase 1, so a token that only fails at the receipt stage stays until a later ticket reports `DeviceNotRegistered`.
+- **Clients.** Tapping the notification opens `/chat/<conversationId>` (from `data.conversationId`). The app suppresses the banner while that conversation is already on screen. Web has no push.
 
 ### Reported messages (society admin; platform admins too)
 

@@ -14,6 +14,7 @@ import {
   preview,
   reportReason,
 } from "../chat/rules.js";
+import { notifyNewMessage } from "../chat/push.js";
 import * as store from "../chat/store.js";
 import { approvedMembership, isSocietyAdmin, requireSocietyAdmin, sharesUnitWithParty } from "../lib/authz.js";
 import { DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
@@ -22,8 +23,9 @@ import { clientKey, registerRateLimit } from "../plugins/rateLimit.js";
 
 // Lender <-> borrower chat (api/ROUTES.md "Chat"). One conversation per
 // (listing, borrower); participants are the listing owner and that borrower.
-// Delivery is polling. Messages are immutable: there is deliberately no edit
-// or delete route (dispute evidence), and a DB trigger enforces it too.
+// Delivery is polling, plus an Expo push to the other participant
+// (chat/push.ts). Messages are immutable: there is deliberately no edit or
+// delete route (dispute evidence), and a DB trigger enforces it too.
 
 const uuid = z.string().uuid();
 const idParams = z.object({ id: uuid });
@@ -273,6 +275,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
       if (!parsed.success) throw invalid(parsed.error.issues[0]?.message ?? "invalid message");
       if (!(await sendAllowed(c, role, bookings, me))) throw new DomainError("CONFLICT", "conversation_closed");
       const m = await store.insertMessage(c.id, me, side, parsed.data);
+      // Fire-and-forget: a push failure (even a synchronous throw) never touches the 201.
+      void Promise.resolve()
+        .then(() => notifyNewMessage(c, m))
+        .catch((err) => req.log.warn({ err }, "chat push failed"));
       return reply.code(201).send(store.messageView(m));
     },
   );

@@ -48,9 +48,31 @@ export const users = pgTable(
     trustScore: doublePrecision("trust_score").notNull().default(4),
     trustCompleted: integer("trust_completed").notNull().default(0),
     trustDisputesLost: integer("trust_disputes_lost").notNull().default(0),
+    // Chat push notifications on/off (PATCH /me chatPushEnabled). Default on.
+    chatPushEnabled: boolean("chat_push_enabled").notNull().default(true),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("users_phone").on(t.phone)],
+);
+
+// Expo push tokens (POST/DELETE /me/push-tokens). One row per device token;
+// a token that moves to another account is reassigned (upsert on token).
+export const pushTokens = pgTable(
+  "push_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique("push_tokens_token_unique"),
+    platform: text("platform").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("push_tokens_user").on(t.userId),
+    check("push_tokens_platform", sql`${t.platform} in ('ios', 'android')`),
+  ],
 );
 
 export const sessions = pgTable(

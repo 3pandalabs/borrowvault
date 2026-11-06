@@ -9,7 +9,7 @@ import {
   setSessionExpiredHandler,
   signup as apiSignup,
 } from "../lib/api";
-import { registerForPush } from "../lib/push";
+import { registerForPush, unregisterForPush } from "../lib/push";
 import type { Membership, User } from "../lib/types";
 
 type AuthContextValue = {
@@ -60,9 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, [refresh]);
 
+  // App start (session restored) and every sign-in: (re)register this device for push.
+  const userId = user?.id;
   useEffect(() => {
-    if (user) void registerForPush();
-  }, [user]);
+    if (userId) void registerForPush(userId);
+  }, [userId]);
 
   async function signIn(email: string, password: string) {
     try {
@@ -85,6 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    // Before logout, while the access token still works: stop pushes to this device.
+    await unregisterForPush();
     await apiLogout();
     setUser(null);
     setMemberships([]);

@@ -10,6 +10,7 @@ import { db } from "../db/index.js";
 import { passwordResetTokens, sessions, users } from "../db/schema.js";
 import { env } from "../env.js";
 import { sendMail, simpleMail } from "../lib/mailer.js";
+import { deleteTokensOf } from "../lib/pushTokens.js";
 import { userView } from "../lib/users.js";
 import { keyedLimiter } from "../lib/clientKey.js";
 import { globalLimiter, registerRateLimit } from "../plugins/rateLimit.js";
@@ -210,6 +211,8 @@ If this wasn't you, ignore this email.`,
       if (!consumed.length) return invalidToken();
       await db.update(users).set({ passwordHash: await hashSecret(req.body.password) }).where(eq(users.id, consumed[0].userId));
       await db.delete(sessions).where(eq(sessions.userId, consumed[0].userId));
+      // Every device is signed out, so it must stop getting chat previews too.
+      await deleteTokensOf(consumed[0].userId);
       return reply.code(204).send();
     },
   );

@@ -19,6 +19,7 @@ import { Button, ErrorText, Loading, P } from "../../src/components/ui";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useIsScreenFocused, usePolling } from "../../src/hooks/usePolling";
 import { useUnread } from "../../src/hooks/useUnread";
+import { clearActiveConversation, setActiveConversation } from "../../src/lib/activeChat";
 import { ApiError, chatError, getConversation, listMessages, markRead, reportMessage, sendMessage } from "../../src/lib/api";
 import {
   appendNewer,
@@ -176,6 +177,15 @@ export default function ChatScreen() {
   );
 
   usePolling(pollNewer, POLL_MS, focused);
+
+  // While this chat is on screen, its push notifications aren't shown (lib/push.ts).
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      setActiveConversation(id);
+      return () => clearActiveConversation(id);
+    }, [id]),
+  );
 
   async function loadOlder() {
     const first = confirmedRef.current[0];

@@ -66,6 +66,9 @@ vi.mock("../src/lib/authz.js", () => ({
   sharesUnitWithParty: vi.fn(async () => s.sharesUnit),
 }));
 
+// Push has its own suite (push.test.ts); here it's a no-op.
+vi.mock("../src/chat/push.js", () => ({ notifyNewMessage: vi.fn(async () => {}) }));
+
 vi.mock("../src/lib/notify.js", () => ({
   notifySocietyAdmins: vi.fn(async () => {
     s.notified++;

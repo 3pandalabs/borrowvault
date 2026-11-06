@@ -9,6 +9,8 @@ export type User = {
   phone: string;
   upiVpa: string | null;
   isPlatformAdmin: boolean;
+  /** Chat push notifications on (default) or off (PATCH /me). App-only; web has no push. */
+  chatPushEnabled: boolean;
   trust: Trust;
 };
 

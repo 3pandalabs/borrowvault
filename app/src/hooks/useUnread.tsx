@@ -13,7 +13,8 @@ const UnreadContext = createContext<UnreadContextValue>({ ...EMPTY, refresh: asy
 
 /**
  * Unread chat counts for the tab badge. Polls GET /conversations/unread every 30 s while the app is
- * in the foreground (no push in Phase 1); screens call `refresh()` after reading or on focus.
+ * in the foreground; screens call `refresh()` after reading or on focus, and a chat push arriving in the
+ * foreground triggers one too (usePushNotifications).
  */
 export function UnreadProvider({ children }: { children: ReactNode }) {
   const { user, approved } = useAuth();

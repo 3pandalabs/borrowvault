@@ -78,8 +78,7 @@ export default function OnboardingPage() {
           <Clock className="mx-auto size-10 text-amber-500" />
           <h1 className="mt-3 text-xl font-semibold">Pending approval</h1>
           <p className="mt-2 text-sm text-fg-muted">
-            Your request to join <span className="font-medium text-fg">{done.societyName}</span> as {done.towerName} ·{" "}
-            {done.flatNo} is with your society admin. You&apos;ll be able to browse and lend once they approve it.
+            Your request to join <span className="font-medium text-fg">{done.societyName}</span> as {`${done.towerName} · ${done.flatNo}`} is with your society admin. You&apos;ll be able to browse and lend once they approve it.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Link href="/profile">

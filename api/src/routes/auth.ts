@@ -9,7 +9,7 @@ import { hashSecret, verifySecret } from "../auth/password.js";
 import { db } from "../db/index.js";
 import { passwordResetTokens, sessions, users } from "../db/schema.js";
 import { env } from "../env.js";
-import { sendMail, simpleMail } from "../lib/mailer.js";
+import { actionMail, sendMail } from "../lib/mailer.js";
 import { deleteTokensOf } from "../lib/pushTokens.js";
 import { userView } from "../lib/users.js";
 import { keyedLimiter } from "../lib/clientKey.js";
@@ -165,22 +165,18 @@ export async function authRoutes(fastify: FastifyInstance) {
           .returning({ id: passwordResetTokens.id });
         const token = `${row.id}.${secret}`;
         const url = `${env.WEB_ORIGIN}/reset-password?token=${encodeURIComponent(token)}`;
-        // Not awaited. Fail-soft: BorrowVault has no verified sender yet.
+        // Not awaited, and fail-soft. The link must be in the HTML part too:
+        // Gmail renders HTML, and it once only lived in the text part.
         void sendMail(
           [
-            {
-              ...simpleMail(
-                user.email,
-                "Reset your BorrowVault password",
-                `Someone asked to reset the password for this BorrowVault account. The link works once and expires in 30 minutes. If this wasn't you, ignore this email.`,
-              ),
-              text: `Someone asked to reset the password for this BorrowVault account.
-
-Open this link to choose a new one (works once, expires in 30 minutes):
-${url}
-
-If this wasn't you, ignore this email.`,
-            },
+            actionMail(
+              user.email,
+              "Reset your BorrowVault password",
+              "Someone asked to reset the password for this BorrowVault account. The link works once and expires in 30 minutes.",
+              "Choose a new password",
+              url,
+              "If this wasn't you, ignore this email. Your password stays the same.",
+            ),
           ],
           (msg) => req.log.info({ userId: user.id }, msg),
         ).catch((err) => req.log.warn({ err }, "password reset mail failed"));

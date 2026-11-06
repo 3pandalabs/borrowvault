@@ -17,6 +17,8 @@ export default function SignupPage() {
   const [form, setForm] = useState({ displayName: "", email: "", phone: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // DPDP-style explicit consent. Client-side only: the signup API is unchanged.
+  const [agreed, setAgreed] = useState(false);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -69,6 +71,26 @@ export default function SignupPage() {
             onChange={set("password")}
           />
         </Field>
+        <label className="flex items-start gap-2 text-sm text-fg-muted">
+          <input
+            type="checkbox"
+            required
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-1 size-4 shrink-0 accent-accent"
+          />
+          <span>
+            I am 18 or older, and I agree to the{" "}
+            <Link href="/terms" target="_blank" className="font-medium text-accent hover:underline">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" target="_blank" className="font-medium text-accent hover:underline">
+              Privacy Policy
+            </Link>
+            , including the use of my data as described there.
+          </span>
+        </label>
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : null} Create account

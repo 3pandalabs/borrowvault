@@ -17,3 +17,7 @@ export const societyAdminsUrl = (societyId: string) =>
 
 export const adminRequestUrl = (societyId: string) =>
   `${WEB_URL}/admin-requests/new?societyId=${encodeURIComponent(societyId)}`;
+
+/** Public legal pages, linked from sign-up. */
+export const termsUrl = () => `${WEB_URL}/terms`;
+export const privacyUrl = () => `${WEB_URL}/privacy`;

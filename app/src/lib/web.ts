@@ -10,3 +10,7 @@ export const registerSocietyUrl = () => `${WEB_URL}/societies/register`;
 /** "Make me an admin of a society I live in" (a `join_admin` admin request). */
 export const adminRequestUrl = (societyId: string) =>
   `${WEB_URL}/admin-requests/new?societyId=${encodeURIComponent(societyId)}`;
+
+/** Public legal pages, linked from sign-up. */
+export const termsUrl = () => `${WEB_URL}/terms`;
+export const privacyUrl = () => `${WEB_URL}/privacy`;

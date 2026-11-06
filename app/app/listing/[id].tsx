@@ -6,7 +6,7 @@ import { slotTitle } from "../../src/components/Evidence";
 import { Button, Card, Chip, ErrorText, H1, H2, KV, Loading, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader, useNow } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
-import { bookingRequestError, createBooking, getAvailability, getListing } from "../../src/lib/api";
+import { bookingRequestError, chatError, createBooking, createConversation, getAvailability, getListing } from "../../src/lib/api";
 import { formatDateTime, formatPaise, fromIst, istParts } from "../../src/lib/format";
 import { PRICING_LABEL, priceLine } from "../../src/lib/labels";
 import { colors } from "../../src/lib/theme";
@@ -44,6 +44,7 @@ export default function ListingDetail() {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(() => new Date(defaultStart().getTime() + 2 * HOUR));
   const action = useAction();
+  const ask = useAction();
   const now = useNow(30_000);
 
   useEffect(() => {
@@ -69,6 +70,19 @@ export default function ListingDetail() {
   const lenMs = end.getTime() - start.getTime();
   const tooLong = lenMs > 30 * 24 * HOUR ? "Bookings can be at most 30 days." : unit === "weekend" && lenMs > 72 * HOUR ? "A weekend booking can be at most 72 hours." : null;
   const valid = !!unit && end > start && start.getTime() > now && !clash && !tooLong;
+
+  async function askQuestion() {
+    await ask.run(async () => {
+      let c;
+      try {
+        // 200 = the chat I already have about this listing, 201 = a new one.
+        c = await createConversation(l!.id);
+      } catch (err) {
+        throw new Error(chatError(err));
+      }
+      router.push(`/chat/${c.id}`);
+    });
+  }
 
   async function request() {
     const ok = await action.run(async () => {
@@ -107,6 +121,18 @@ export default function ListingDetail() {
           </View>
           <TrustBadge trust={l.owner.trust} />
         </View>
+        {!isOwner ? (
+          <>
+            <Button
+              title="Ask a question"
+              variant="secondary"
+              icon="chatbubble-ellipses-outline"
+              busy={ask.busy}
+              onPress={() => void askQuestion()}
+            />
+            <ErrorText>{ask.error}</ErrorText>
+          </>
+        ) : null}
       </Card>
       {l.description ? <P>{l.description}</P> : null}
       <Card>

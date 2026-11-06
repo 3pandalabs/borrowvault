@@ -36,6 +36,10 @@ const schema = z.object({
   // Only with it is X-Client-IP trusted for rate-limit keys. Optional.
   INTERNAL_SHARED_SECRET: optional,
 
+  // Expo push service (chat push). Optional: unset → pushes are sent without an
+  // Authorization header (fine unless "enhanced push security" is turned on in EAS).
+  EXPO_ACCESS_TOKEN: optional,
+
   GIT_COMMIT: optional,
   SOURCE_COMMIT: optional,
 });

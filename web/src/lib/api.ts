@@ -19,6 +19,8 @@ import type {
   BusyRange,
   CategoryPreset,
   ChecklistAnswer,
+  Conversation,
+  ConversationSummary,
   DisputeCategory,
   Geo,
   Inspection,
@@ -33,6 +35,11 @@ import type {
   MediaMime,
   MediaPhase,
   Membership,
+  Message,
+  MessagePage,
+  MessageReport,
+  MessageReportReceipt,
+  MessageReportStatus,
   Occupancy,
   PresignPurpose,
   PlatformAdminRequest,
@@ -44,6 +51,7 @@ import type {
   SocietyPatch,
   SocietySearchResult,
   Tower,
+  UnreadCounts,
   User,
 } from "./types";
 
@@ -101,6 +109,16 @@ const MESSAGE_COPY: Record<string, string> = {
   admin_membership_platform_only:
     "Only BorrowVault can reject or remove a society admin. Write to 3PandaLabs if an admin should step down.",
   platform_admin_required: "Only BorrowVault platform admins can do that.",
+  // Chat (ROUTES.md "Chat").
+  message_empty: "Type a message first.",
+  message_too_long: "That message is too long. Keep it to 2,000 characters.",
+  conversation_closed: "This chat is read-only now, so new messages can't be sent. You can still read everything in it.",
+  participants_only: "Only the lender and borrower can do that. Admins can read this chat but not post in it.",
+  cannot_message_own_listing: "This is your own listing. Neighbours who want to borrow it can message you.",
+  cannot_report_own_message: "You can only report the other person's messages.",
+  already_reported: "You've already reported this message. Your society admin will look at it.",
+  invalid_cursor: "This chat changed while you were looking. Refresh the page.",
+  rate_limited: "You're doing that too often. Wait a minute and try again.",
 };
 
 // ---- tokens ----
@@ -460,3 +478,35 @@ export function tryGeo(): Promise<Geo | null> {
     );
   });
 }
+
+// ---- chat (lender ↔ borrower) ----
+// Delivery is polling: GET /conversations/:id/messages?after=<newest id> every
+// ~5 s while a chat is open, and /conversations/unread for badges.
+
+/** 200 existing / 201 new; 403 `cannot_message_own_listing` for the owner. */
+export const openListingConversation = (listingId: string) =>
+  call<Conversation>("/conversations", { method: "POST", body: { listingId } });
+/** Booking parties only (admins use BookingDetail.conversationId). */
+export const openBookingConversation = (bookingId: string) =>
+  call<Conversation>(bk(bookingId, "/conversation"), { method: "POST" });
+export const listConversations = () => call<ConversationSummary[]>("/conversations");
+export const getUnread = () => call<UnreadCounts>("/conversations/unread");
+export const getConversation = (id: string) => call<Conversation>(`/conversations/${enc(id)}`);
+/** Always oldest first, in server order (never re-sort). Reading doesn't mark anything read. */
+export const getMessages = (id: string, p: { after?: string; before?: string; limit?: number } = {}) =>
+  call<MessagePage>(
+    `/conversations/${enc(id)}/messages${qs({ after: p.after, before: p.before, limit: p.limit ? String(p.limit) : undefined })}`,
+  );
+export const sendMessage = (id: string, body: string) =>
+  call<Message>(`/conversations/${enc(id)}/messages`, { method: "POST", body: { body } });
+/** → 204. Always a JSON body: `{}` = everything read (an empty JSON body is a 400). */
+export const markConversationRead = (id: string, upToMessageId?: string) =>
+  call<void>(`/conversations/${enc(id)}/read`, { method: "POST", body: upToMessageId ? { upToMessageId } : {} });
+/** Only the other participant's messages; once per message. */
+export const reportMessage = (messageId: string, reason: string) =>
+  call<MessageReportReceipt>(`/messages/${enc(messageId)}/report`, { method: "POST", body: { reason } });
+
+export const adminMessageReports = (societyId: string, status: MessageReportStatus = "open") =>
+  call<MessageReport[]>(`/admin/societies/${enc(societyId)}/message-reports${qs({ status })}`);
+export const reviewMessageReport = (id: string, note?: string) =>
+  call<MessageReport>(`/admin/message-reports/${enc(id)}/review`, { method: "POST", body: note ? { note } : {} });

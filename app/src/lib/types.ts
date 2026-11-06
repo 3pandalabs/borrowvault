@@ -9,6 +9,8 @@ export type User = {
   phone: string;
   upiVpa: string | null;
   isPlatformAdmin: boolean;
+  /** Chat push notifications on (default) or off (PATCH /me). */
+  chatPushEnabled: boolean;
   trust: Trust;
 };
 
@@ -312,6 +314,8 @@ export type BookingDetail = Booking & {
   inspections: Inspection[];
   dispute: Dispute | null;
   events: BookingEvent[];
+  /** The lender↔borrower chat for this listing, or null if neither has opened it (ROUTES.md "Chat"). */
+  conversationId: string | null;
 };
 
 export type RatingInput = {
@@ -323,6 +327,51 @@ export type RatingInput = {
 };
 
 export type Rating = RatingInput & { id: string; bookingId: string; rateeId: string; createdAt: string };
+
+// ---- Chat (lender ↔ borrower) ----
+
+/** Messages are immutable and totally ordered by the server: never re-sort by `createdAt`. */
+export type Message = { id: string; senderId: string; body: string; createdAt: string };
+
+export type ConversationListing = { id: string; title: string; status: ListingStatus; coverUrl: string | null };
+
+export type Conversation = {
+  id: string;
+  societyId: string;
+  listing: ConversationListing;
+  owner: PartyInfo;
+  borrower: PartyInfo;
+  myRole: "owner" | "borrower" | "admin";
+  canSend: boolean;
+  /** For the caller; 0 for admins. */
+  unreadCount: number;
+  /** Newest live booking of this listing by this borrower. */
+  activeBookingId: string | null;
+  /** Every booking of this listing by this borrower, newest first. */
+  bookings: { id: string; state: BookingState; startsAt: string; endsAt: string }[];
+  createdAt: string;
+  lastMessageAt: string | null;
+};
+
+export type ConversationSummary = {
+  id: string;
+  societyId: string;
+  listing: ConversationListing;
+  /** The other participant. */
+  other: PartyInfo;
+  myRole: "owner" | "borrower";
+  /** `body` truncated to 140 chars (ends with "…" when cut). */
+  lastMessage: Message | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  activeBookingId: string | null;
+};
+
+export type MessagePage = { messages: Message[]; hasMore: boolean };
+
+export type UnreadCounts = { total: number; byConversation: Record<string, number> };
+
+export type MessageReportReceipt = { id: string; messageId: string; status: "open"; createdAt: string };
 
 // ---- Client-side helpers ----
 

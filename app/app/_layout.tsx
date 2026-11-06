@@ -4,12 +4,15 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
+import { usePushNotifications } from "../src/hooks/usePushNotifications";
+import { UnreadProvider } from "../src/hooks/useUnread";
 import { colors } from "../src/lib/theme";
 
 function RootNavigation() {
   const { user, memberships, approved, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  usePushNotifications(!isLoading && !!user && approved.length > 0);
 
   useEffect(() => {
     if (isLoading) return;
@@ -58,8 +61,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <RootNavigation />
-        <StatusBar style="dark" />
+        <UnreadProvider>
+          <RootNavigation />
+          <StatusBar style="dark" />
+        </UnreadProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

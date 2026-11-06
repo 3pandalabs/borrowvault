@@ -22,11 +22,15 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 | POST | `/auth/refresh` | – | `{refreshToken}` → same |
 | POST | `/auth/logout` | ✓ | `{refreshToken}` → 204 always; the session is deleted only if the token verifies and belongs to the caller |
 | POST | `/auth/password-reset/request` | – | `{email}` → 204 **always** (no account enumeration). Emails a link to `https://borrowvault.3pandalabs.com/reset-password?token=…` (`WEB_ORIGIN`; the web page handles it, the app just opens that URL) (30 min, single use). Same work (hashing) for unknown emails; mail is sent in the background. |
-| POST | `/auth/password-reset/confirm` | – | `{token, password}` → 204 (kills all sessions); 400 `invalid_or_expired_token` |
+| POST | `/auth/password-reset/confirm` | – | `{token, password}` → 204 (kills all sessions **and deletes all the user's push tokens**); 400 `invalid_or_expired_token` |
 | GET | `/me` | ✓ | → `{user, memberships: Membership[]}` |
-| PATCH | `/me` | ✓ | `{displayName?, phone?, upiVpa?}` → `{user}`. `upiVpa` is validated as `^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$`; it is required before you can lend. |
+| PATCH | `/me` | ✓ | `{displayName?, phone?, upiVpa?, chatPushEnabled?: boolean}` → `{user}`. `upiVpa` is validated as `^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$`; it is required before you can lend. `chatPushEnabled: false` stops chat push notifications to all your devices (default `true`). |
+| POST | `/me/push-tokens` | ✓ | `{token, platform: "ios"\|"android"}` → **204**. Registers this device for push. `token` must be an Expo push token matching `^Expo(nent)?PushToken\[[^\]\s]{1,200}\]$` (else 400 `VALIDATION`). Upsert on `token`: re-registering refreshes `last_seen_at`, and a token already registered to another user is **moved** to the caller (one device = one signed-in account). The app calls it on every app start and sign-in. Rate limited: 20 / hour per user → 429 `{error: "rate_limited"}`. |
+| DELETE | `/me/push-tokens` | ✓ | `{token}` (JSON body, 1–300 chars) → **204** always. Unregisters that token if it belongs to the caller (someone else's token is left alone, still 204). The app calls it on sign-out, **before** `POST /auth/logout`. Rate limited: 30 / hour per user. |
 
-`user = {id, email, displayName, phone, upiVpa|null, isPlatformAdmin, trust: {score, completed, disputesLost}}`
+`user = {id, email, displayName, phone, upiVpa|null, isPlatformAdmin, chatPushEnabled: boolean, trust: {score, completed, disputesLost}}`
+
+There is no account-deletion or sign-out-everywhere route. If one is added, it must delete the user's push tokens too (as the password-reset confirm does).
 
 ## Societies & membership
 
@@ -193,7 +197,7 @@ The requester can open their own documents with `GET /storage/url?key=` (keys ar
 
 `PartyInfo = {id, displayName, towerName, flatNo, trust}`
 
-`BookingDetail = Booking & {society: {id, name, centerLat, centerLng, radiusM}, checklistSnapshot, photoSlotsSnapshot, payment: Payment|null, inspections: Inspection[], dispute: Dispute|null, events: [{fromState, toState, reason, at}]}`
+`BookingDetail = Booking & {society: {id, name, centerLat, centerLng, radiusM}, checklistSnapshot, photoSlotsSnapshot, payment: Payment|null, inspections: Inspection[], dispute: Dispute|null, events: [{fromState, toState, reason, at}], conversationId: string|null}`. `conversationId` = the chat between this booking's lender and borrower about this listing (see "Chat"), or `null` if neither has opened it yet; a party gets or creates it with `POST /bookings/:id/conversation`.
 
 `Payment = {depositMode: "declared"|"p2p", feePaise, depositPaise, feeUpiIntent: string, depositUpiIntent: string|null, refundUpiIntent: string|null, awardUpiIntent: string|null, claimedAt, confirmedAt, utr, depositStatus: "none"|"pending"|"declared"|"held_by_lender"|"refund_claimed"|"refunded"|"released", refundDuePaise, refundClaimedAt, refundConfirmedAt, awardPaise, awardFromDepositPaise, awardStatus: "none"|"debt_recorded"|"settled_from_deposit"|"paid_claimed"|"paid", awardPayerId, awardPayeeId}`. `null` until the lender accepts. p2p + lender wins: up to the deposit is kept by the lender (`awardFromDepositPaise`) and `refundDuePaise` = deposit − that. Any excess makes `awardStatus: "debt_recorded"` with `awardUpiIntent` for `awardPaise − awardFromDepositPaise`; otherwise `awardStatus` is `settled_from_deposit`.
 
@@ -206,6 +210,102 @@ UPI intent format: `upi://pay?pa=<vpa>&pn=<urlencoded name>&am=<rupees with 2 de
 `Dispute = {id, raisedBy: userId | "system", raisedBySystem, category, description, claimedPaise, responseText, offerPaise, status, awardPaise, rulingNote, resolvedAt, createdAt, escalatedAt, deadlineAt, media?}`. `raisedBy` is `"system"` for the auto-raised p2p refund dispute (on the borrower's behalf). `media` (in `BookingDetail` only) = the dispute evidence, `Media[]`. `status ∈ open awaiting_response under_review escalated resolved withdrawn`.
 
 `nextAction` values (so clients don't re-derive the state machine): `accept_or_decline`, `wait_lender`, `pay`, `confirm_payment`, `wait_payment`, `handover_inspect`, `handover_ack`, `wait_handover`, `return_inspect`, `review_return`, `wait_review`, `respond_dispute`, `wait_ruling`, `refund_deposit`, `confirm_refund`, `pay_award`, `confirm_award`, `rate`, `null`. `review_return` = the lender hasn't acked the borrower's return yet, OR objected and should now raise a dispute. `deadlineAt` = when the next timer fires if nobody acts.
+
+## Chat (lender ↔ borrower)
+
+One **conversation per (listing, borrower)**. Its participants are exactly the listing owner (`myRole: "owner"`) and that borrower (`myRole: "borrower"`). A prospective borrower opens it from a listing ("Ask a question") before booking; the same conversation carries on through every booking of that listing by that borrower. Text only. **Messages are immutable**: there is no edit or delete route (they can be dispute evidence), and the database rejects UPDATE/DELETE on messages.
+
+**Delivery is polling** (no websockets). While a chat is open, poll `GET /conversations/:id/messages?after=<id of the newest message you hold>` about every 5 s; use `GET /conversations/unread` for badges. A new message also sends a **push notification** to the other participant's registered app devices (see "Push notifications" below). There are **no chat emails** in Phase 1.
+
+| Method | Path | Who | Body → Response |
+|---|---|---|---|
+| POST | `/conversations` | borrower-to-be | `{listingId}` → `Conversation`: **200** if the caller already has a conversation on that listing, **201** if it was just created. 403 `{error: "cannot_message_own_listing", code: "FORBIDDEN"}` for the listing's owner. Creating a new one needs an **approved** membership in the listing's society and a listing that isn't `archived` (`active` and `paused` are fine); otherwise 404 (unknown listing, other society, pending/revoked membership, archived: all look the same). An existing conversation is always returned (200), whatever the listing/membership status. Rate limited: 20 / hour per user → 429 `{error: "rate_limited"}`. |
+| POST | `/bookings/:id/conversation` | booking party (lender or borrower) | no body → `Conversation` for that booking's (listing, borrower), **200** existing / **201** created. Works for any booking state. 404 for anyone else (admins included: they use `BookingDetail.conversationId`). Rate limited: 20 / hour per user (separate bucket). |
+| GET | `/conversations` | ✓ | → `ConversationSummary[]`, newest activity first (`lastMessageAt`, else `createdAt`), max 100. The borrower sees every conversation they opened; the **owner only sees conversations that have at least one message**. |
+| GET | `/conversations/unread` | ✓ | → `{total: number, byConversation: {[conversationId]: number}}` (only conversations with unread > 0 appear in `byConversation`). Counts messages from the other participant after your read marker. |
+| GET | `/conversations/:id` | participant, or eligible admin (below) | → `Conversation`. 404 otherwise. |
+| GET | `/conversations/:id/messages?after=&before=&limit=` | participant, or eligible admin | → `{messages: Message[], hasMore: boolean}` (see Paging). Reading does **not** mark anything read. |
+| POST | `/conversations/:id/messages` | participant | `{body: string}` → **201** `Message`. `body` is trimmed, then must be 1–2000 characters (Unicode code points): 400 `{error: "message_empty"\|"message_too_long", code: "VALIDATION"}`. 409 `{error: "conversation_closed", code: "CONFLICT"}` when `canSend` is false. 403 `{error: "participants_only", code: "FORBIDDEN"}` for an eligible admin. Rate limited: 30 / minute per user → 429 `{error: "rate_limited"}`. Sending also moves your read marker to your new message (everything before it counts as read for you). |
+| POST | `/conversations/:id/read` | participant | `{upToMessageId?: uuid}` → **204** (send `{}` to mark everything read; an empty body with `Content-Type: application/json` is a 400). Moves your read marker to that message (it must belong to this conversation, else 400 `invalid_cursor`); without it, to the latest message. The marker never moves backwards. 403 `participants_only` for an eligible admin. |
+| POST | `/messages/:id/report` | participant | `{reason: string}` (trimmed, 5–500 chars, else 400) → **201** `{id, messageId, status: "open", createdAt}`. Only the **other** participant's messages: 403 `{error: "cannot_report_own_message", code: "FORBIDDEN"}`. Once per message per reporter: 409 `{error: "already_reported", code: "CONFLICT"}`. 403 `participants_only` for an eligible admin; 404 for everyone else. The society's admins are emailed (best effort, no message content; link `/admin/<societyId>/message-reports`). Rate limited: 20 / hour per user. |
+
+There are **no** `PATCH`/`PUT`/`DELETE` routes for conversations or messages.
+
+**Who may send (`canSend`).** A participant may send when **either** (a) a booking of this listing by this borrower is live (`REQUESTED ACCEPTED DEPOSIT_HELD HANDOVER_PENDING ACTIVE OVERDUE RETURN_PENDING DISPUTED`) or changed state within the last **7 days** (covers refund/award follow-ups after COMPLETED/RESOLVED/CANCELLED), **or** (b) the listing isn't `archived` **and** the sender has an approved membership in the society. Otherwise the conversation is read-only for them (`canSend: false`, send → 409 `conversation_closed`). Participants can always read their conversations, even after the listing is archived or their membership is revoked.
+
+**Admin read access (disputes).** While any booking of this listing by this borrower is `DISPUTED` or `RESOLVED`, the society's admins and platform admins can read the **whole** conversation (`GET /conversations/:id` and `/messages`), read-only, with `myRole: "admin"`, `canSend: false`, `unreadCount: 0`. The arbiter rule applies: an admin who lives in either participant's unit gets 404. Admins find the conversation through `BookingDetail.conversationId` on `GET /bookings/:id` (`null` = the parties never chatted). Admins can't send, mark read or report (403 `participants_only`).
+
+**Paging.** `limit` 1–100, default 50. `after` and `before` are message ids from this conversation (400 `invalid_cursor` otherwise; 400 if both are given). `messages` is **always oldest first**.
+- no cursor: the newest `limit` messages; `hasMore` = older messages exist (page back with `before=<messages[0].id>`).
+- `before=<id>`: the `limit` messages just older than `id`; `hasMore` = still older ones exist.
+- `after=<id>`: the `limit` messages just newer than `id`; `hasMore` = more new ones exist (fetch again immediately with `after=<last id>`). Polls use this.
+
+Messages are totally ordered (a server-side sequence; a later message never appears before an earlier one), so `after=` polling never skips a message. Clients must not reorder by `createdAt`.
+
+```
+Message = {id, senderId, body, createdAt}
+
+Conversation = {
+  id, societyId,
+  listing: {id, title, status: "active"|"paused"|"archived", coverUrl: string|null},
+  owner: PartyInfo, borrower: PartyInfo,
+  myRole: "owner"|"borrower"|"admin",
+  canSend: boolean,
+  unreadCount: number,             // for the caller; 0 for admins
+  activeBookingId: string|null,    // newest live booking of this listing by this borrower (live = the states listed under canSend (a))
+  bookings: [{id, state, startsAt, endsAt}],   // every booking of this listing by this borrower, newest first
+  createdAt, lastMessageAt: string|null
+}
+
+ConversationSummary = {
+  id, societyId,
+  listing: {id, title, status, coverUrl: string|null},
+  other: PartyInfo,                // the other participant
+  myRole: "owner"|"borrower",
+  lastMessage: {id, senderId, body, createdAt} | null,   // body truncated to 140 chars (ends with "…" when cut)
+  lastMessageAt: string|null,
+  unreadCount: number,
+  activeBookingId: string|null
+}
+```
+
+### Push notifications (Expo push service)
+
+Sending a message (`POST /conversations/:id/messages`) notifies the **other participant** only: never the sender, and never admins (admins only read). Delivery is best effort and **fire-and-forget**: the push runs in the background and can never delay or fail the send route (still 201).
+
+- **Who.** Skipped when the recipient has `chatPushEnabled: false` or no registered tokens. Every token the recipient has registered gets the message.
+- **Payload.** `POST https://exp.host/--/api/v2/push/send`, JSON array in batches of ≤ 100, 5 s timeout. `Authorization: Bearer <EXPO_ACCESS_TOKEN>` is sent only when that optional env var is set.
+  ```
+  { to: <token>,
+    title: <sender displayName>,
+    body: "<listing title>: <message preview>",   // preview = the message, truncated to 100 chars ("…" when cut)
+    data: { type: "chat", conversationId },
+    sound: "default", priority: "high",
+    channelId: "chat" }                          // the app's Android "Messages" channel
+  ```
+- **Throttle.** At most **one push per (conversation, recipient) per 60 s**, **unless** the recipient has read past the previously pushed message (their read marker ≥ its sequence); then the next message pushes straight away. The throttle state is **in memory, per API process** (borrowvault-api is one container; a restart forgets it, which at worst sends one extra push).
+- **Tickets.** A ticket with `details.error: "DeviceNotRegistered"` deletes that token. Other ticket errors and transport failures are logged and dropped (no retry). Push **receipts are not polled** in Phase 1, so a token that only fails at the receipt stage stays until a later ticket reports `DeviceNotRegistered`.
+- **Clients.** Tapping the notification opens `/chat/<conversationId>` (from `data.conversationId`). The app suppresses the banner while that conversation is already on screen. Web has no push.
+
+### Reported messages (society admin; platform admins too)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/admin/societies/:id/message-reports?status=open\|reviewed` | default `open` → `MessageReport[]`, newest first, max 100. 404 non-member, 403 `society_admin_required` for a resident. Reports on conversations where the caller is a participant or lives in a participant's unit are **left out** (arbiter rule). |
+| POST | `/admin/message-reports/:id/review` | `{note?: string (≤1000)}` → `MessageReport` (status `reviewed`). Repeating it on a reviewed report returns it unchanged (200). 404 for unknown ids, other societies, and reports hidden from the caller by the arbiter rule. |
+
+```
+MessageReport = {
+  id, status: "open"|"reviewed", reason, createdAt,
+  reviewedAt: string|null, reviewNote: string|null,
+  reporter: {id, displayName},
+  conversation: {id, listing: {id, title}, owner: PartyInfo, borrower: PartyInfo},
+  message: Message,          // the reported message
+  context: Message[]         // up to 5 messages before and 5 after it, plus the message itself, oldest first
+}
+```
+
+A report doesn't give the admin access to the rest of the conversation; only a DISPUTED/RESOLVED booking does (above). Reviewing records the decision only: messages are never hidden or deleted.
 
 ## Timers (Temporal workflow `bookingWorkflow`, task queue `borrowvault`)
 
@@ -221,4 +321,4 @@ UPI intent format: `upi://pay?pa=<vpa>&pn=<urlencoded name>&am=<rupees with 2 de
 ## Ops
 
 | GET | `/health` | → `{ok: true, commit, startedAt}` |
-| GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"`. `counts` keys: `users, liveSocieties, approvedMembers, pendingMembers, adminRequestsPending, activeListings, bookings, openBookings, completedBookings, openDisputes, activeSessions` |
+| GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"`. `counts` keys: `users, liveSocieties, approvedMembers, pendingMembers, adminRequestsPending, activeListings, bookings, openBookings, completedBookings, openDisputes, activeSessions, conversations, messagesLast24h, openMessageReports` |

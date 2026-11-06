@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Timeline } from "@/components/bookings";
+import { ChatHistoryPanel } from "@/components/chat";
 import { ErrorText, Field, LoadError, Loading, Panel, PanelTitle, StateBadge, TrustBadge } from "@/components/common";
 import { DisputeSummary } from "@/components/disputes";
 import { Comparison, InspectionView } from "@/components/inspections";
@@ -117,6 +118,8 @@ function Arbitration({ b, set }: { b: BookingDetail; set: (b: BookingDetail) => 
               <RulingForm b={b} onDone={set} />
             )
           ) : null}
+
+          <ChatHistoryPanel conversationId={b.conversationId} />
 
           <Panel>
             <PanelTitle>Timeline</PanelTitle>

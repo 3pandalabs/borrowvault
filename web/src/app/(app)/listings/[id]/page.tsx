@@ -4,11 +4,12 @@ import { CalendarDays, ImageOff, Loader2, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { OpenChatButton } from "@/components/chat";
 import { EmptyState, ErrorText, Field, LoadError, Loading, Panel, PanelTitle, selectClass, TrustBadge } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError, createBooking, errorMessage, getAvailability, getListing } from "@/lib/api";
+import { ApiError, createBooking, errorMessage, getAvailability, getListing, openListingConversation } from "@/lib/api";
 import { formatINR, formatRange, istLocalToIso } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
 import { priceLine } from "@/lib/listing";
@@ -108,7 +109,19 @@ export default function ListingDetailPage() {
               </Link>
             </div>
           </Panel>
-        ) : l.status === "active" ? (
+        ) : null}
+        {!isOwner ? (
+          <Panel>
+            <PanelTitle>Questions first?</PanelTitle>
+            <p className="mb-3 text-sm text-fg-muted">
+              Ask {l.owner.displayName} about condition, pickup or what&apos;s included before you book.
+            </p>
+            <OpenChatButton variant="outline" open={() => openListingConversation(l.id)}>
+              Ask a question
+            </OpenChatButton>
+          </Panel>
+        ) : null}
+        {isOwner ? null : l.status === "active" ? (
           <RequestForm listing={l} />
         ) : (
           <EmptyState

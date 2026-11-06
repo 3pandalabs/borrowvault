@@ -6,6 +6,8 @@ import { useAction, useLoader } from "../../../src/hooks/useAsync";
 import {
   acceptBooking,
   awardPaidClaim,
+  bookingConversation,
+  chatError,
   awardPaidConfirm,
   cancelBooking,
   claimPayment,
@@ -56,6 +58,7 @@ export default function BookingDetailScreen() {
         {b.depositPaise > 0 ? (
           <KV k={b.payment?.depositMode === "p2p" ? "Deposit (paid to lender)" : "Deposit (declared)"} v={formatPaise(b.depositPaise)} />
         ) : null}
+        <MessageButton b={b} />
       </Card>
 
       <NextActionCard b={b} onUpdate={setData} />
@@ -308,6 +311,44 @@ function CancelButton({ b, onUpdate }: { b: BookingDetail; onUpdate: (d: Booking
           ])
         }
       />
+    </>
+  );
+}
+
+/** Parties open (or create) the listing chat; admins can only read an existing one during a dispute. */
+function MessageButton({ b }: { b: BookingDetail }) {
+  const router = useRouter();
+  const action = useAction();
+  if (b.myRole === "admin") {
+    if (!b.conversationId) return null;
+    const cid = b.conversationId;
+    return (
+      <Button title="Read the parties' chat" variant="secondary" icon="chatbubbles-outline" onPress={() => router.push(`/chat/${cid}`)} />
+    );
+  }
+  const other = counterParty(b);
+  const open = () =>
+    action.run(async () => {
+      let cid = b.conversationId;
+      if (!cid) {
+        try {
+          cid = (await bookingConversation(b.id)).id;
+        } catch (err) {
+          throw new Error(chatError(err));
+        }
+      }
+      router.push(`/chat/${cid}`);
+    });
+  return (
+    <>
+      <Button
+        title={`Message ${other.displayName}`}
+        variant="secondary"
+        icon="chatbubble-ellipses-outline"
+        busy={action.busy}
+        onPress={() => void open()}
+      />
+      <ErrorText>{action.error}</ErrorText>
     </>
   );
 }

@@ -29,6 +29,9 @@ type CountsRow = {
   completed_bookings: number;
   open_disputes: number;
   active_sessions: number;
+  conversations: number;
+  messages_last_24h: number;
+  open_message_reports: number;
 };
 
 type DatabaseRow = { size_bytes: string; size_pretty: string; connections: number };
@@ -52,7 +55,10 @@ export async function metricsRoutes(app: FastifyInstance) {
         (select count(*) from bookings where state in ('REQUESTED','ACCEPTED','DEPOSIT_HELD','HANDOVER_PENDING','ACTIVE','OVERDUE','RETURN_PENDING'))::int as open_bookings,
         (select count(*) from bookings where state in ('COMPLETED','RESOLVED'))::int as completed_bookings,
         (select count(*) from disputes where status <> 'resolved' and status <> 'withdrawn')::int as open_disputes,
-        (select count(*) from sessions where expires_at > now())::int as active_sessions
+        (select count(*) from sessions where expires_at > now())::int as active_sessions,
+        (select count(*) from conversations)::int as conversations,
+        (select count(*) from messages where created_at > now() - interval '24 hours')::int as messages_last_24h,
+        (select count(*) from message_reports where status = 'open')::int as open_message_reports
     `);
     const database = await db.execute<DatabaseRow>(sql`
       select
@@ -80,6 +86,9 @@ export async function metricsRoutes(app: FastifyInstance) {
         completedBookings: c.completed_bookings,
         openDisputes: c.open_disputes,
         activeSessions: c.active_sessions,
+        conversations: c.conversations,
+        messagesLast24h: c.messages_last_24h,
+        openMessageReports: c.open_message_reports,
       },
       traffic: { apiRequestsLastHour: requestsLastHour() },
       process: { rssBytes: mem.rss, heapUsedBytes: mem.heapUsed, cpuPercentOfOneCore: cpuPercentOfOneCore() },

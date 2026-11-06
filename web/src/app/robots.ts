@@ -16,6 +16,7 @@ export default function robots(): MetadataRoute.Robots {
           "/profile",
           "/listings",
           "/bookings",
+          "/messages",
           "/admin/",
           "/platform",
           "/societies",

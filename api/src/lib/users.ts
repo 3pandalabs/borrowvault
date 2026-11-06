@@ -13,6 +13,7 @@ export function userView(u: UserRow) {
     phone: u.phone,
     upiVpa: u.upiVpa,
     isPlatformAdmin: u.isPlatformAdmin,
+    chatPushEnabled: u.chatPushEnabled,
     trust: { score: u.trustScore, completed: u.trustCompleted, disputesLost: u.trustDisputesLost },
   };
 }

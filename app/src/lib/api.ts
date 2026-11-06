@@ -7,6 +7,8 @@ import type {
   BusyRange,
   CategoryPreset,
   ChecklistAnswer,
+  Conversation,
+  ConversationSummary,
   DisputeCategory,
   Geo,
   Inspection,
@@ -20,6 +22,9 @@ import type {
   MediaMime,
   MediaPhase,
   Membership,
+  Message,
+  MessagePage,
+  MessageReportReceipt,
   Occupancy,
   PresignPurpose,
   PricingUnit,
@@ -27,6 +32,7 @@ import type {
   RatingInput,
   SocietySearchResult,
   Tower,
+  UnreadCounts,
   User,
 } from "./types";
 
@@ -252,8 +258,15 @@ export const requestPasswordReset = (email: string) =>
 // ---------------- Profile ----------------
 
 export const getMe = () => get<Me>("/me");
-export const updateMe = (body: { displayName?: string; phone?: string; upiVpa?: string }) =>
+export const updateMe = (body: { displayName?: string; phone?: string; upiVpa?: string; chatPushEnabled?: boolean }) =>
   patch<{ user: User }>("/me", body);
+
+// ---------------- Push tokens ----------------
+
+export const registerPushToken = (token: string, platform: "ios" | "android") =>
+  post<void>("/me/push-tokens", { token, platform });
+export const deletePushToken = (token: string) =>
+  request<void>("/me/push-tokens", { method: "DELETE", body: { token } });
 
 // ---------------- Societies ----------------
 
@@ -356,6 +369,57 @@ export const awardPaidClaim = (id: string) => act(id, "award/paid-claim");
 export const awardPaidConfirm = (id: string) => act(id, "award/paid-confirm");
 
 export const rateBooking = (id: string, body: RatingInput) => post<Rating>(`${b(id)}/ratings`, body);
+
+// ---------------- Chat ----------------
+
+const conv = (id: string) => `/conversations/${encodeURIComponent(id)}`;
+
+/** 200 existing / 201 new; 403 cannot_message_own_listing for the owner. */
+export const createConversation = (listingId: string) => post<Conversation>("/conversations", { listingId });
+/** Either booking party; works in any booking state. */
+export const bookingConversation = (bookingId: string) => post<Conversation>(`${b(bookingId)}/conversation`);
+export const listConversations = () => get<ConversationSummary[]>("/conversations");
+export const getConversation = (id: string) => get<Conversation>(conv(id));
+/** `messages` is always oldest first. `after` = poll for newer, `before` = page back; never both. */
+export const listMessages = (id: string, p: { after?: string; before?: string; limit?: number } = {}) =>
+  get<MessagePage>(`${conv(id)}/messages${qs({ after: p.after, before: p.before, limit: p.limit?.toString() })}`);
+export const sendMessage = (id: string, body: string) => post<Message>(`${conv(id)}/messages`, { body });
+/** Always sends a JSON object (`{}` = up to the latest): an empty JSON body is a 400. */
+export const markRead = (id: string, upToMessageId?: string) =>
+  post<void>(`${conv(id)}/read`, upToMessageId ? { upToMessageId } : {});
+export const unreadCounts = () => get<UnreadCounts>("/conversations/unread");
+export const reportMessage = (messageId: string, reason: string) =>
+  post<MessageReportReceipt>(`/messages/${encodeURIComponent(messageId)}/report`, { reason });
+
+/** Chat error copy. The shared friendlyError reads any 409 as "this booking has moved on", which is wrong here. */
+export function chatError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.error) {
+      case "message_empty":
+        return "Type a message first.";
+      case "message_too_long":
+        return "Messages can be at most 2,000 characters.";
+      case "conversation_closed":
+        return "This chat is read-only now, so you can't send new messages.";
+      case "cannot_message_own_listing":
+        return "This is your own listing.";
+      case "cannot_report_own_message":
+        return "You can only report the other person's messages.";
+      case "already_reported":
+        return "You've already reported this message. Your society admin will look at it.";
+      case "participants_only":
+        return "Only the lender and the borrower can do that in this chat.";
+      case "rate_limited":
+        return "You're going too fast. Please wait a moment and try again.";
+      case "invalid_cursor":
+        return "This chat changed. Pull down to reload.";
+    }
+    if (err.status === 404) return "Chat not found, or you're no longer in this society.";
+    if (err.status === 409) return "This chat changed in the meantime. Please try again.";
+    if (err.status === 403) return "You're not allowed to do that in this chat.";
+  }
+  return friendlyError(err);
+}
 
 // ---------------- Error copy ----------------
 

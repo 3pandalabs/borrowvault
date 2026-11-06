@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, logout } from "@/lib/api";
 import { SessionProvider, useMeLoader, useSession, useSignedIn } from "@/lib/session";
+import { useUnread, useUnreadPoller } from "@/lib/unread";
 import { cn } from "@/lib/utils";
 import { Backdrop } from "./Backdrop";
 import { LoadError, Loading, selectClass } from "./common";
@@ -54,14 +55,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function Header() {
-  const { user, approved, adminOf, active, setActiveSociety } = useSession();
+  const { user, memberships, approved, adminOf, active, setActiveSociety } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  useUnreadPoller();
+  const unread = useUnread()?.total ?? 0;
 
-  const links: { href: string; label: string }[] = [
+  const links: { href: string; label: string; badge?: number }[] = [
     { href: "/home", label: "Home" },
     ...(approved.length ? [{ href: "/listings", label: "Browse" }, { href: "/bookings", label: "Bookings" }] : []),
+    // Chats stay readable after a membership is revoked, so any membership (or
+    // an unread message) is enough to show the inbox.
+    ...(memberships.length || unread ? [{ href: "/messages", label: "Messages", badge: unread }] : []),
     { href: "/profile", label: "Profile" },
     ...adminOf.map((m) => ({
       href: `/admin/${m.societyId}`,
@@ -86,6 +92,14 @@ function Header() {
       )}
     >
       {l.label}
+      {l.badge ? (
+        <span
+          className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-semibold text-accent-fg"
+          aria-label={`${l.badge} unread`}
+        >
+          {l.badge > 99 ? "99+" : l.badge}
+        </span>
+      ) : null}
     </Link>
   ));
 

@@ -377,6 +377,8 @@ export type BookingDetail = Booking & {
   inspections: Inspection[];
   dispute: Dispute | null;
   events: BookingEvent[];
+  /** The lender↔borrower chat for this listing + borrower; null until a party opens it. */
+  conversationId: string | null;
 };
 
 export type RatingInput = {
@@ -397,4 +399,69 @@ export type Rating = {
   asDescribed: boolean | null;
   comment: string | null;
   createdAt: string;
+};
+
+// ---- Chat (lender ↔ borrower) ----
+
+/** Immutable: there is no edit or delete. */
+export type Message = { id: string; senderId: string; body: string; createdAt: string };
+
+export type ConversationListing = { id: string; title: string; status: ListingStatus; coverUrl: string | null };
+
+export type ConversationBooking = { id: string; state: BookingState; startsAt: string; endsAt: string };
+
+export type Conversation = {
+  id: string;
+  societyId: string;
+  listing: ConversationListing;
+  owner: PartyInfo;
+  borrower: PartyInfo;
+  /** "admin" = read-only dispute access (canSend false, unreadCount 0). */
+  myRole: "owner" | "borrower" | "admin";
+  canSend: boolean;
+  unreadCount: number;
+  /** Newest live booking of this listing by this borrower. */
+  activeBookingId: string | null;
+  /** Every booking of this listing by this borrower, newest first. */
+  bookings: ConversationBooking[];
+  createdAt: string;
+  lastMessageAt: string | null;
+};
+
+export type ConversationSummary = {
+  id: string;
+  societyId: string;
+  listing: ConversationListing;
+  /** The other participant. */
+  other: PartyInfo;
+  myRole: "owner" | "borrower";
+  /** body truncated to 140 chars (ends with "…" when cut). */
+  lastMessage: Message | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  activeBookingId: string | null;
+};
+
+export type UnreadCounts = { total: number; byConversation: Record<string, number> };
+
+/** Always oldest first. */
+export type MessagePage = { messages: Message[]; hasMore: boolean };
+
+export type MessageReportReceipt = { id: string; messageId: string; status: "open"; createdAt: string };
+
+export type MessageReportStatus = "open" | "reviewed";
+
+export type MessageReport = {
+  id: string;
+  status: MessageReportStatus;
+  reason: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  reporter: { id: string; displayName: string };
+  conversation: { id: string; listing: { id: string; title: string }; owner: PartyInfo; borrower: PartyInfo };
+  /** The reported message. */
+  message: Message;
+  /** Up to 5 before and 5 after, plus the message itself, oldest first. */
+  context: Message[];
 };

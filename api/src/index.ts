@@ -9,6 +9,7 @@ import { adminRoutes } from "./routes/admin.js";
 import { adminRequestRoutes } from "./routes/adminRequests.js";
 import { authRoutes } from "./routes/auth.js";
 import { bookingRoutes } from "./routes/bookings.js";
+import { chatRoutes } from "./routes/chat.js";
 import { listingRoutes } from "./routes/listings.js";
 import { metricsRoutes } from "./routes/metrics.js";
 import { societyRoutes } from "./routes/societies.js";
@@ -61,6 +62,7 @@ await app.register(adminRoutes);
 await app.register(adminRequestRoutes);
 await app.register(listingRoutes);
 await app.register(bookingRoutes);
+await app.register(chatRoutes);
 await app.register(metricsRoutes);
 
 app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((err) => {

@@ -101,3 +101,12 @@ export function formatCountdown(ms: number): string {
 export function formatStateLabel(state: string): string {
   return state.charAt(0) + state.slice(1).toLowerCase().replace(/_/g, " ");
 }
+
+/** Compact list/chat timestamp in IST: "10:05 AM" today, "Mon 3 Nov" this year, else "3 Nov 2025". */
+export function formatWhen(iso: string | Date, now: Date = new Date()): string {
+  const p = istParts(iso);
+  const n = istParts(now);
+  if (p.year === n.year && p.month === n.month && p.day === n.day) return time12(p.hour, p.minute);
+  if (p.year === n.year) return `${DAYS[p.weekday]} ${p.day} ${MONTHS[p.month]}`;
+  return `${p.day} ${MONTHS[p.month]} ${p.year}`;
+}

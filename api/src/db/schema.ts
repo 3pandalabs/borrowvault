@@ -593,3 +593,93 @@ export const ratings = pgTable(
     check("stars_range", sql`${t.stars} between 1 and 5`),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Chat: one conversation per (listing, borrower), lender = listing owner.
+// Messages are immutable (dispute evidence): no route edits or deletes one, and
+// a trigger in drizzle/0004_chat.sql rejects UPDATE/DELETE on `messages`.
+// ---------------------------------------------------------------------------
+
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    societyId: uuid("society_id")
+      .notNull()
+      .references(() => societies.id),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    borrowerId: uuid("borrower_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    lastMessageAt: ts("last_message_at"),
+    // Unread tracking: each side's last read messages.seq (0 = nothing read).
+    ownerLastReadSeq: bigint("owner_last_read_seq", { mode: "number" }).notNull().default(0),
+    borrowerLastReadSeq: bigint("borrower_last_read_seq", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("conversations_listing_borrower").on(t.listingId, t.borrowerId),
+    index("conversations_owner_activity").on(t.ownerId, t.lastMessageAt),
+    index("conversations_borrower_activity").on(t.borrowerId, t.lastMessageAt),
+    check("conversations_distinct_parties", sql`${t.ownerId} <> ${t.borrowerId}`),
+  ],
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Total order for cursors/unread. Sends lock the conversation row before
+    // inserting, so within a conversation seq order = commit order and a
+    // poller using `after=` never skips a message.
+    seq: bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    senderId: uuid("sender_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("messages_seq").on(t.seq),
+    index("messages_conversation_seq").on(t.conversationId, t.seq),
+    check("messages_body_len", sql`char_length(${t.body}) between 1 and 2000`),
+  ],
+);
+
+export const messageReports = pgTable(
+  "message_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    societyId: uuid("society_id")
+      .notNull()
+      .references(() => societies.id),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("open"), // open | reviewed
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: ts("reviewed_at"),
+    reviewNote: text("review_note"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("message_reports_one_per_reporter").on(t.messageId, t.reporterId),
+    index("message_reports_society_status").on(t.societyId, t.status, t.createdAt),
+    check("message_reports_status", sql`${t.status} in ('open', 'reviewed')`),
+  ],
+);

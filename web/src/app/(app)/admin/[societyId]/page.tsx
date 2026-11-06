@@ -1,12 +1,13 @@
 "use client";
 
-import { Building, Check, Copy, FileText, Gavel, KeyRound, Loader2, MapPin, Plus, Settings, ShieldCheck, Users, X } from "lucide-react";
+import { Building, Check, Copy, FileText, Flag, Gavel, KeyRound, Loader2, MapPin, Plus, Settings, ShieldCheck, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { SocietyAdminsList } from "@/components/adminRequests";
 import { EmptyState, ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle, selectClass, StateBadge } from "@/components/common";
 import { DISPUTE_CATEGORY } from "@/components/disputes";
+import { MessageReports } from "@/components/messageReports";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,8 @@ const TABS = [
   { key: "members", label: "Members", icon: Users },
   { key: "towers", label: "Towers & invites", icon: Building },
   { key: "disputes", label: "Disputes", icon: Gavel },
+  // Key matches the /admin/<id>/message-reports link in the report email.
+  { key: "message-reports", label: "Reported messages", icon: Flag },
   { key: "admins", label: "Admins", icon: ShieldCheck },
   { key: "settings", label: "Settings", icon: Settings },
 ] as const;
@@ -43,6 +46,10 @@ function Admin() {
   const membership = adminOf.find((m) => m.societyId === societyId);
   // Platform admins needn't be members; fetch the name for the header.
   const society = useAsync(() => api.getSociety(societyId), !membership && user.isPlatformAdmin ? `society:${societyId}` : null);
+  const canAdmin = !!membership || user.isPlatformAdmin;
+  // One small call for the tab badge (max 100 by contract).
+  const openReports = useAsync(() => api.adminMessageReports(societyId, "open"), canAdmin ? `open-reports:${societyId}` : null);
+  const openReportCount = openReports.data?.length ?? 0;
 
   if (!membership && !user.isPlatformAdmin) {
     return (
@@ -79,12 +86,18 @@ function Admin() {
             )}
           >
             <Icon className="size-4" /> {label}
+            {key === "message-reports" && openReportCount ? (
+              <Badge variant="warn" aria-label={`${openReportCount} open`}>
+                {openReportCount >= 100 ? "99+" : openReportCount}
+              </Badge>
+            ) : null}
           </button>
         ))}
       </div>
       {tab === "members" ? <Members societyId={societyId} /> : null}
       {tab === "towers" ? <Towers societyId={societyId} /> : null}
       {tab === "disputes" ? <Disputes societyId={societyId} /> : null}
+      {tab === "message-reports" ? <MessageReports societyId={societyId} onChanged={openReports.reload} /> : null}
       {tab === "settings" ? <SocietySettings societyId={societyId} /> : null}
       {tab === "admins" ? <Admins societyId={societyId} /> : null}
     </>

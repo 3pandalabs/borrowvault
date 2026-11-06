@@ -29,6 +29,13 @@
       "when": 1793980030243,
       "tag": "0003_admin_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793985338580,
+      "tag": "0004_chat",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   bookingEvents,
+  conversations,
   bookingPayments,
   disputes,
   inspectionMedia,
@@ -230,7 +231,7 @@ export async function bookingDetail(b: Booking, callerId: string) {
   const lender = ctx.user.get(b.lenderId)!;
   const borrower = ctx.user.get(b.borrowerId)!;
 
-  const [media, events, [soc]] = await Promise.all([
+  const [media, events, [soc], [conv]] = await Promise.all([
     db.select().from(inspectionMedia).where(and(eq(inspectionMedia.bookingId, b.id), eq(inspectionMedia.status, "verified"))),
     db
       .select({ fromState: bookingEvents.fromState, toState: bookingEvents.toState, reason: bookingEvents.reason, at: bookingEvents.at })
@@ -241,6 +242,12 @@ export async function bookingDetail(b: Booking, callerId: string) {
       .select({ id: societies.id, name: societies.name, centerLat: societies.centerLat, centerLng: societies.centerLng, radiusM: societies.radiusM })
       .from(societies)
       .where(eq(societies.id, b.societyId)),
+    // Chat for this (listing, borrower) pair, if one exists yet (api/ROUTES.md "Chat").
+    db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(eq(conversations.listingId, b.listingId), eq(conversations.borrowerId, b.borrowerId)))
+      .limit(1),
   ]);
 
   const inspectionViews = await Promise.all(
@@ -267,6 +274,7 @@ export async function bookingDetail(b: Booking, callerId: string) {
   return {
     ...summary,
     society: soc ?? null,
+    conversationId: conv?.id ?? null,
     checklistSnapshot: b.checklistSnapshot,
     photoSlotsSnapshot: b.photoSlotsSnapshot,
     payment: p ? paymentView(b, p, lender, borrower) : null,

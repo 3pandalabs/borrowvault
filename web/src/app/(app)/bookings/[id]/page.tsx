@@ -1,10 +1,11 @@
 "use client";
 
-import { CheckCircle2, Clock, Flag, Gavel, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Flag, Gavel, Loader2, MessageCircle, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { ACTION_COPY, Timeline } from "@/components/bookings";
+import { ChatHistoryPanel, OpenChatButton } from "@/components/chat";
 import { ErrorText, LoadError, Loading, Panel, PanelTitle, StateBadge, TrustBadge } from "@/components/common";
 import { DisputeSummary, EvidencePicker, RaiseDisputeForm, RatingForm, RespondDisputeForm, uploadEvidence } from "@/components/disputes";
 import { CaptureInApp, Comparison, InspectionView } from "@/components/inspections";
@@ -446,6 +447,24 @@ function Detail({ b, set, reload }: { b: BookingDetail; set: (b: BookingDetail) 
       </div>
 
       <div className="space-y-4">
+        {me === "admin" ? (
+          <ChatHistoryPanel conversationId={b.conversationId} />
+        ) : (
+          <Panel>
+            <PanelTitle>Messages</PanelTitle>
+            {b.conversationId ? (
+              <Link href={`/messages/${b.conversationId}`}>
+                <Button variant="outline" className="w-full">
+                  <MessageCircle /> Message {other.displayName}
+                </Button>
+              </Link>
+            ) : (
+              <OpenChatButton variant="outline" className="w-full" open={() => api.openBookingConversation(b.id)}>
+                Message {other.displayName}
+              </OpenChatButton>
+            )}
+          </Panel>
+        )}
         <Panel>
           <PanelTitle>Timeline</PanelTitle>
           <Timeline events={b.events} />

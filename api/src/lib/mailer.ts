@@ -1,19 +1,55 @@
+import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../env.js";
 
-// Sends through the shared org email gateway (3pandalabs/mailer), copied from
-// RsvpVault. Templates stay in this app; the gateway is a dumb transport.
+// Production sends over SMTP (Gmail app password, SMTP_* in env.ts): the shared
+// org gateway (3pandalabs/mailer) has no verified sender for BorrowVault, since
+// Resend's one free domain is rsvpvault's. The gateway path stays as the
+// fallback when SMTP is unset. Templates stay in this app.
 //
-// BorrowVault has NO verified sender yet (Resend holds one domain and it is
-// rsvpvault's), so in Phase 1 the gateway is expected to refuse or the env to
-// be unset. EVERY send therefore fails soft: logged and counted, never thrown.
+// EVERY send fails soft: logged and counted, never thrown.
 // No booking action may fail because an email didn't go out.
 
 export type Mail = { to: string; subject: string; html: string; text: string };
 
 export type SendResult = { delivered: number; failed: number; skipped: number };
 
+function smtpConfigured(): boolean {
+  return Boolean(env.SMTP_USER && env.SMTP_PASS);
+}
+
 export function mailerConfigured(): boolean {
-  return Boolean(env.MAILER_URL && env.MAILER_TOKEN);
+  return smtpConfigured() || Boolean(env.MAILER_URL && env.MAILER_TOKEN);
+}
+
+let transport: Transporter | null = null;
+function smtp(): Transporter {
+  transport ??= nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_PORT === 465,
+    // Google shows app passwords as four groups; spaces are not part of it.
+    auth: { user: env.SMTP_USER, pass: env.SMTP_PASS.replace(/\s+/g, "") },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
+  });
+  return transport;
+}
+
+async function sendViaSmtp(messages: Mail[], log: (msg: string) => void): Promise<SendResult> {
+  const from = { name: env.EMAIL_FROM_NAME || "BorrowVault", address: env.SMTP_USER };
+  let delivered = 0;
+  let failed = 0;
+  for (const m of messages) {
+    try {
+      await smtp().sendMail({ from, to: m.to, subject: m.subject, html: m.html, text: m.text });
+      delivered++;
+    } catch (err) {
+      log(`smtp send failed: ${String(err)}`);
+      failed++;
+    }
+  }
+  return { delivered, failed, skipped: 0 };
 }
 
 const BATCH = 50;
@@ -24,6 +60,7 @@ export async function sendMail(messages: Mail[], log: (msg: string) => void): Pr
     log(`mailer not configured; ${messages.length} message(s) not delivered`);
     return { delivered: 0, failed: 0, skipped: messages.length };
   }
+  if (smtpConfigured()) return sendViaSmtp(messages, log);
 
   let delivered = 0;
   let failed = 0;

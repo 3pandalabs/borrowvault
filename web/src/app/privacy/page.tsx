@@ -76,11 +76,19 @@ export default function PrivacyPage() {
         <H3>If you apply to be a society admin</H3>
         <UL>
           <li>
-            Your committee role, an optional statement, and documents: your RWA or society registration certificate (for
-            a new society), an authorisation letter or committee resolution, and your own ID or address proof. We ask
-            you to upload a masked Aadhaar (only the last 4 digits visible) or a utility bill, not a full Aadhaar.
+            Your role in the society (for example “Resident” or “Secretary”), an optional statement, and a copy of your
+            own ID proof. We ask for a masked Aadhaar (only the last 4 digits visible), PAN, passport or driving licence,
+            never a full Aadhaar.
           </li>
-          <li>For a new society: its name, city, address and a map location and radius (the society’s geofence).</li>
+          <li>
+            If you register a new society: its name, city, address, a map location and radius (the society’s geofence),
+            your tower and flat, and a proof that you live there (for example a maintenance bill, rent agreement,
+            allotment letter or electricity bill).
+          </li>
+          <li>
+            If a society admin nominates you as a co-admin: who nominated you, and when you accepted. You upload your
+            own ID proof to accept.
+          </li>
         </UL>
 
         <H3>Listings</H3>
@@ -165,7 +173,7 @@ export default function PrivacyPage() {
         <p>We use your personal data only for these purposes:</p>
         <UL>
           <li>To create and secure your account, and to let you sign in and reset your password.</li>
-          <li>To verify that you live in the society you join, and that society admins are genuinely authorised.</li>
+          <li>To verify that you live in the society you join, and that society admins are who they say they are.</li>
           <li>To show your listings to neighbours, and to run bookings, reminders and deadlines.</li>
           <li>To build UPI payment links to the lender’s UPI ID, and to record the payment confirmations you make.</li>
           <li>To keep tamper-proof evidence of an item’s condition at handover and return.</li>
@@ -215,7 +223,9 @@ export default function PrivacyPage() {
         <H3>3PandaLabs platform admins</H3>
         <p>
           A small number of 3PandaLabs staff can review admin applications and their documents, rule on escalated
-          disputes, and access data when needed to run, secure or support the service.
+          disputes, and access data when needed to run, secure or support the service. In a pilot society (a newly
+          registered society that we haven’t verified yet), only platform admins rule on disputes, so they see that
+          booking’s evidence and chat.
         </p>
         <H3>Others</H3>
         <p>
@@ -236,7 +246,9 @@ export default function PrivacyPage() {
             centre in Germany. Our workflow engine (Temporal) is self-hosted on these same servers.
           </li>
           <li>
-            <strong>Resend</strong>: sends our service emails, through a 3PandaLabs mail gateway hosted on Cloudflare.
+            <strong>Google LLC</strong>: sends our service emails (for example password resets and admin-request
+            decisions) through Gmail, from 3pandalabs@gmail.com. Google handles the email address, subject and text of
+            each email.
           </li>
           <li>
             <strong>Expo (650 Industries, Inc.)</strong>, <strong>Apple</strong> and <strong>Google</strong>: deliver
@@ -251,34 +263,41 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      {/* TODO(anil): the retention periods below are proposals, not yet enforced
-          in code (no R2 lifecycle rule or purge job exists yet; only reset links
-          (30 min), upload/download links, invite codes (30 days) and sessions
-          (30 days) expire today). Review the numbers and build the purge jobs, or
-          edit this section to match what actually happens. */}
+      {/* The 3-year rule below needs a purge job before the first data turns
+          3 years old (November 2029). What it must delete and keep is listed in
+          api/ROUTES.md "Data retention". */}
       <Section id="retention" title="7. How long we keep it">
         <p>We keep personal data only as long as we need it for the purposes above, or as the law requires.</p>
+        <p>
+          <strong>Our rule: we keep your personal data for 3 years after your last activity on BorrowVault, then delete
+          it.</strong> Your last activity is the later of your last sign-in and the end of your last booking, dispute or
+          admin request. Closing your account counts as your last activity. This covers your account details, society
+          membership and proofs, admin application documents, listings, bookings, payment confirmations, inspection
+          photos and videos, disputes, awards, ratings and chat messages. The 3 years give time for late disputes,
+          unpaid awards and legal claims.
+        </p>
+        <p>Some things are kept for less time:</p>
         <UL>
           <li>Password reset links expire after 30 minutes and work once. Sign-in sessions expire after 30 days.</li>
           <li>Upload and viewing links for files expire within minutes. Society invite codes expire after 30 days.</li>
           <li>Push tokens are deleted when you sign out of the app, reset your password, or the device stops accepting notifications.</li>
           <li>
-            Inspection photos and videos: 180 days after the booking ends, or longer while a dispute about it is open
-            and until it is settled.
+            Server logs: up to 30 days. Database backups: up to 30 days, on a rolling basis. So data we delete is gone
+            from backups within 30 days.
           </li>
-          <li>
-            Bookings, payment confirmations, disputes, awards, ratings and chat messages: for as long as your account is
-            open, and up to 3 years after it closes. This lets us handle late disputes, unpaid awards and legal claims.
-          </li>
-          <li>
-            Proof-of-residence and admin application documents: while your membership or admin role is active, and up to
-            1 year after it ends or the application is decided.
-          </li>
-          <li>Server logs: up to 30 days. Database backups: up to 30 days.</li>
         </UL>
         <p>
-          When we no longer need data, we delete it or make it anonymous. If we must keep something longer because of a
-          law, a court order or an open legal claim, we keep only what is needed and only for that reason.
+          If a dispute is still open, an award is unpaid, or a law, court order or legal claim needs us to keep
+          something, we keep only what is needed, only for that reason, and delete it when the reason ends. When a
+          booking or chat also belongs to another resident who is still active, we remove your name and details from it
+          instead of deleting their record.
+        </p>
+        <H3>Statistics we keep</H3>
+        <p>
+          We keep counts of activity, such as how many bookings were made and completed and how many listings were
+          created, per society and per day. <strong>These counts contain no personal data.</strong> They hold no names,
+          emails, phone numbers, user IDs, flats, messages or photos, and they can’t be traced back to you. We keep them
+          for at least 5 years, and may keep them indefinitely, to understand how BorrowVault is used.
         </p>
       </Section>
 
@@ -315,7 +334,7 @@ export default function PrivacyPage() {
           <strong>What we may keep after a deletion request.</strong> Chat messages, inspection evidence, booking
           history, disputes and awards also belong to the other resident’s record. We may keep them while a booking or
           dispute is open, while an award is unpaid, or as the law requires. We remove them once those reasons end, in
-          line with the retention periods above.
+          line with the 3-year rule above. Anonymous activity counts (see “Statistics we keep”) are not affected.
         </p>
         <p>
           To use any right, email <Mail to={PRIVACY_EMAIL} /> from the email address on your account. We may ask you to
@@ -323,8 +342,6 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      {/* TODO(anil): name a real person as Grievance Officer if counsel advises it,
-          and confirm the response times below (IT Rules 2021 / DPDP Rules 2025). */}
       <Section id="grievance" title="9. Grievance Officer">
         <p>If you have a complaint about how we handle your personal data or about content on BorrowVault, contact:</p>
         <p className="rounded-2xl border border-line bg-bg-subtle p-4">

@@ -262,7 +262,8 @@ export default function TermsPage() {
           <li>
             Otherwise a society admin who isn’t a party, and doesn’t live in a party’s flat, reviews the evidence and the
             chat for that listing and rules on an award. If no ruling is made within 72 hours, it escalates to a
-            3PandaLabs platform admin, who can also rule.
+            3PandaLabs platform admin, who can also rule. In a pilot society (see section 13), only a 3PandaLabs platform
+            admin rules.
           </li>
           <li>
             <strong>Rulings are binding within BorrowVault.</strong> You agree to pay any award against you over UPI and
@@ -310,12 +311,19 @@ export default function TermsPage() {
       <Section id="admins" title="13. Society admins">
         <UL>
           <li>
-            Society admins are residents or committee members of your society, authorised by your RWA or committee and
-            approved by 3PandaLabs after a document check. <strong>They are not 3PandaLabs staff or agents.</strong>
+            Society admins are residents of your society. Each one is approved by 3PandaLabs after an ID check (plus a
+            proof of residence for whoever registers a new society), or is nominated by an existing admin of the
+            society. A nominated co-admin becomes an admin 48 hours after accepting, unless 3PandaLabs rejects it
+            first. <strong>They are not 3PandaLabs staff or agents.</strong>
           </li>
           <li>
             They approve and revoke memberships, set the society’s deposit mode and boundary, review reported messages,
             and rule on disputes they aren’t involved in.
+          </li>
+          <li>
+            A newly registered society starts as a <strong>pilot</strong> until 3PandaLabs verifies it. A pilot society
+            has at most 50 members, and each listing’s deposit and replacement value can be at most ₹5,000. In a pilot
+            society, 3PandaLabs platform admins rule on disputes instead of society admins.
           </li>
           <li>
             Admins must act fairly and use residents’ data only for these tasks. If you think an admin acted unfairly,
@@ -368,7 +376,6 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      {/* TODO(anil): the liability cap (₹5,000) is a placeholder; have counsel set it. */}
       <Section id="liability" title="17. Limitation of liability">
         <UL>
           <li>
@@ -406,7 +413,7 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      {/* TODO(anil): have counsel confirm the New Jersey choice of law and forum
+      {/* TODO(anil): needs a lawyer's review. Confirm the New Jersey choice of law and forum
           is enforceable against Indian consumers alongside the CPA 2019 carve-out. */}
       <Section id="law" title="20. Governing law">
         <UL>

@@ -5,12 +5,12 @@ import Link from "next/link";
 import { Backdrop } from "@/components/Backdrop";
 import { Logo } from "@/components/Wordmark";
 
-// TODO(anil): confirm these mailboxes exist and are monitored before launch.
+// Both mailboxes are Cloudflare Email Routing addresses on 3pandalabs.com.
 // The privacy one doubles as the Grievance Officer contact (DPDP Act / IT Rules).
 export const PRIVACY_EMAIL = "privacy@3pandalabs.com";
 export const SUPPORT_EMAIL = "support@3pandalabs.com";
 
-export const LAST_UPDATED = "6 November 2026";
+export const LAST_UPDATED = "9 November 2026";
 
 export type TocEntry = { id: string; title: string };
 

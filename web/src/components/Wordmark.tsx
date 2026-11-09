@@ -1,23 +1,17 @@
 import Link from "next/link";
 
-/** Three-panda mark (brand/logo/panda-mark.html). aria-hidden: the wordmark
- * beside it carries the name. */
+/** BorrowVault app icon (same artwork as the favicon, src/app/icon.svg).
+ * aria-hidden: the wordmark beside it carries the name. */
 export function BrandMark() {
   return (
-    <span className="brand-mark" aria-hidden="true">
-      <span>🐼</span>
-      <span>🐼</span>
-      <span>🐼</span>
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimisation needed
+    <img src="/icon.svg" alt="" aria-hidden="true" width={28} height={28} className="size-7 shrink-0 rounded-md" />
   );
 }
 
+/** One word, one colour: a two-tone name read as "Borrow Vault". */
 export function WordmarkName() {
-  return (
-    <>
-      Borrow<span className="text-accent">Vault</span>
-    </>
-  );
+  return <>BorrowVault</>;
 }
 
 /** "| by 3PandaLabs" attribution tag (brand/attribution). A sibling of the home
@@ -45,7 +39,7 @@ export function WordmarkTag() {
 export function Logo({ href = "/" }: { href?: string }) {
   return (
     <span className="inline-flex items-center">
-      <Link href={href} className="inline-flex items-center gap-1.5 text-lg font-semibold text-fg">
+      <Link href={href} className="inline-flex items-center gap-2 text-lg font-semibold text-fg">
         <BrandMark />
         <WordmarkName />
       </Link>

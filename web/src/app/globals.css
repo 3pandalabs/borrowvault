@@ -37,19 +37,3 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 3PandaLabs logo mark, verbatim from brand/logo/panda-mark.css. */
-.brand-mark {
-  position: relative;
-  display: inline-block;
-  width: 2.2rem;
-  height: 2.05rem;
-  flex-shrink: 0;
-}
-.brand-mark span {
-  position: absolute;
-  font-size: 1.15rem;
-  line-height: 1;
-}
-.brand-mark span:nth-child(1) { top: -0.1rem; left: 0.52rem; z-index: 2; }
-.brand-mark span:nth-child(2) { top: 0.6rem; left: 0.02rem; transform: rotate(-24deg); }
-.brand-mark span:nth-child(3) { top: 0.6rem; left: 1.02rem; transform: rotate(24deg); }

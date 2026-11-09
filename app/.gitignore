@@ -45,3 +45,6 @@ yarn-error.*
 
 # Supabase CLI local cache/link state
 supabase/.temp
+
+# Firebase config: supplied to EAS builds as the GOOGLE_SERVICES_JSON secret file
+google-services.json

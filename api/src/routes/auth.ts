@@ -93,7 +93,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const emailKey = req.body.email.toLowerCase();
       if (!loginGlobal() || !loginPerEmail(emailKey)) return reply.code(429).send({ error: "rate_limited" });
       const [user] = await db.select().from(users).where(eq(users.email, emailKey)).limit(1);
-      if (!user) {
+      if (!user || user.deletedAt) {
         // Equalise timing between "no such account" and "wrong password".
         await verifySecret(req.body.password, DUMMY_HASH);
         return reply.code(401).send({ error: "invalid_credentials" });
@@ -116,7 +116,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.code(401).send({ error: "invalid_refresh_token" });
       }
       const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
-      if (!user) return reply.code(401).send({ error: "invalid_refresh_token" });
+      if (!user || user.deletedAt) return reply.code(401).send({ error: "invalid_refresh_token" });
       // Rotate: a stolen refresh token works at most once.
       const deleted = await db.delete(sessions).where(eq(sessions.id, session.id)).returning({ id: sessions.id });
       if (!deleted.length) return reply.code(401).send({ error: "invalid_refresh_token" });

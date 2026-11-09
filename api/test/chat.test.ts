@@ -50,6 +50,7 @@ const s = vi.hoisted(() => ({
   seq: 0,
   n: 0,
   notified: 0,
+  blocks: [] as [string, string][], // [blocker, blocked]
 }));
 
 const uid = () => `aaaaaaaa-aaaa-4aaa-8aaa-${String(++s.n).padStart(12, "0")}`;
@@ -64,6 +65,11 @@ vi.mock("../src/lib/authz.js", () => ({
     throw new DomainError("NOT_FOUND", "not_found");
   }),
   sharesUnitWithParty: vi.fn(async () => s.sharesUnit),
+}));
+
+vi.mock("../src/lib/blocks.js", () => ({
+  blockedEitherWay: vi.fn(async (a: string, b: string) => s.blocks.some(([x, y]) => (x === a && y === b) || (x === b && y === a))),
+  hasBlocked: vi.fn(async (a: string, b: string) => s.blocks.some(([x, y]) => x === a && y === b)),
 }));
 
 // Push has its own suite (push.test.ts); here it's a no-op.
@@ -203,6 +209,7 @@ beforeEach(() => {
   s.msgs = [];
   s.reports = [];
   s.notified = 0;
+  s.blocks = [];
 });
 
 const req = (who: string, method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", url: string, payload?: object) =>
@@ -300,6 +307,39 @@ describe("opening a conversation", () => {
     expect(r.json()).toMatchObject({ myRole: "owner", activeBookingId: BOOKING, canSend: true });
     expect((await req(BORROWER, "POST", `/bookings/${BOOKING}/conversation`)).statusCode).toBe(200);
     expect((await req(ADMIN, "POST", `/bookings/${BOOKING}/conversation`)).statusCode).toBe(404);
+  });
+});
+
+describe("blocking (either direction)", () => {
+  it("canSend false for both, sends 403 blocked, even with a live booking; reading still works", async () => {
+    const id = await open();
+    s.bookingState = "ACTIVE";
+    s.blocks = [[OWNER, BORROWER]];
+    const asOwner = (await req(OWNER, "GET", `/conversations/${id}`)).json();
+    const asBorrower = (await req(BORROWER, "GET", `/conversations/${id}`)).json();
+    expect([asOwner.canSend, asOwner.blockedByMe]).toEqual([false, true]);
+    expect([asBorrower.canSend, asBorrower.blockedByMe]).toEqual([false, false]);
+    for (const who of [OWNER, BORROWER]) {
+      const r = await send(who, id, "hello?");
+      expect(r.statusCode).toBe(403);
+      expect(r.json()).toEqual({ error: "blocked", code: "FORBIDDEN" });
+    }
+    expect((await req(BORROWER, "GET", `/conversations/${id}/messages`)).statusCode).toBe(200);
+    s.blocks = [];
+    expect((await send(BORROWER, id, "hello?")).statusCode).toBe(201);
+  });
+  it("no new conversation (403 blocked); an existing one is still returned", async () => {
+    s.blocks = [[BORROWER, OWNER]];
+    const r = await req(BORROWER, "POST", "/conversations", { listingId: LISTING });
+    expect(r.json()).toEqual({ error: "blocked", code: "FORBIDDEN" });
+    s.bookingState = "ACCEPTED";
+    expect((await req(OWNER, "POST", `/bookings/${BOOKING}/conversation`)).json().error).toBe("blocked");
+    s.blocks = [];
+    const id = await open();
+    s.blocks = [[OWNER, BORROWER]];
+    const again = await req(BORROWER, "POST", "/conversations", { listingId: LISTING });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ id, canSend: false });
   });
 });
 

@@ -119,8 +119,10 @@ export default function PrivacyPage() {
           <li>Your checklist answers and notes.</li>
         </UL>
         <p>
-          We only read your location when you take an inspection photo or video in the app. We don’t track your
-          location in the background.
+          The app reads your location only while the handover or return camera screen is open. While it is open, it
+          checks about every 2 seconds, so each photo or video can be matched to a recent fix and we can confirm it was
+          taken inside your society. When you leave that screen, it stops. We never read your location in the
+          background, and we only store it with the photos and videos you take.
         </p>
 
         <H3>Disputes, ratings and trust</H3>
@@ -139,6 +141,18 @@ export default function PrivacyPage() {
             edited or deleted once sent, because they can be evidence in a dispute.
           </li>
           <li>Reports you make about a message, with your reason, and the admin’s review.</li>
+        </UL>
+
+        <H3>Blocks and reports</H3>
+        <UL>
+          <li>
+            The people you block, and when. We use this to stop you messaging each other, starting new bookings with
+            each other, and seeing each other’s listings. The person you block isn’t told.
+          </li>
+          <li>
+            Reports you make about a person or a listing: the reason you pick, any details you write, and the admin’s
+            decision. Admins don’t tell the person who reported them.
+          </li>
         </UL>
 
         <H3>Your device and technical data</H3>
@@ -217,6 +231,10 @@ export default function PrivacyPage() {
           <li>
             A reported message, with up to 5 messages before and after it for context. Admins who are a party, or who
             live in a party’s flat, are excluded from ruling and from seeing reports about that chat.
+          </li>
+          <li>
+            Reports about a person or a listing in their society: who reported, who or what was reported, the reason
+            and details. Platform admins see reports about people too. Admins can take a listing down.
           </li>
         </UL>
         <p>Society admins don’t see the documents you upload to apply to become an admin.</p>
@@ -313,8 +331,10 @@ export default function PrivacyPage() {
             and UPI ID yourself in your profile.
           </li>
           <li>
-            <strong>Erasure</strong>: ask us to delete your data. There is no delete button in the app yet, so email us
-            from the address on your account. We will delete your account and data, except what we must keep (see below).
+            <strong>Erasure</strong>: delete your account yourself, in the app (Profile → Delete account) or on the web
+            at <A href="/delete-account">borrowvault.3pandalabs.com/delete-account</A>. You confirm with your password.
+            You can also email us from the address on your account. We will delete your account and data, except what
+            we must keep (see below).
           </li>
           <li>
             <strong>Withdraw consent</strong>: as easily as you gave it, by emailing us. Withdrawing consent means we
@@ -331,10 +351,20 @@ export default function PrivacyPage() {
           </li>
         </UL>
         <p>
+          <strong>What happens when you delete your account.</strong> You can delete it once you have no booking in
+          progress, no open dispute, no unpaid award and no refund still owed. Then, straight away: your name becomes
+          “Deleted user”; your email, mobile number, UPI ID and password are removed; your listings are taken down and
+          their photos deleted; your society memberships end and your proof of residence is deleted; any admin
+          application is closed and its documents deleted; and you are signed out everywhere. Your email address can be
+          used to sign up again as a new account.
+        </p>
+        <p>
           <strong>What we may keep after a deletion request.</strong> Chat messages, inspection evidence, booking
           history, disputes and awards also belong to the other resident’s record. We may keep them while a booking or
           dispute is open, while an award is unpaid, or as the law requires. We remove them once those reasons end, in
-          line with the 3-year rule above. Anonymous activity counts (see “Statistics we keep”) are not affected.
+          line with the 3-year rule above. Until then they show you only as “Deleted user”. Inspection photos and videos
+          can’t be changed or deleted early, because both sides rely on them as evidence. Anonymous activity counts (see
+          “Statistics we keep”) are not affected.
         </p>
         <p>
           To use any right, email <Mail to={PRIVACY_EMAIL} /> from the email address on your account. We may ask you to

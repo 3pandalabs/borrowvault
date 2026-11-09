@@ -7,7 +7,7 @@ import { errorMessage, getCategories, uploadFile } from "@/lib/api";
 import { paiseToRupeesInput, rupeesToPaise } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
-import type { ChecklistItem, ChecklistType, Listing, ListingInput, ListingKind, ListingStatus } from "@/lib/types";
+import type { ChecklistItem, ChecklistType, Listing, ListingInput, ListingKind, OwnerListingStatus } from "@/lib/types";
 import { PILOT_VALUE_CAP_PAISE } from "./adminRequests";
 import { ErrorText, Field, Panel, PanelTitle, selectClass } from "./common";
 import { Button } from "./ui/button";
@@ -25,7 +25,7 @@ const TYPE_LABEL: Record<ChecklistType, string> = {
 
 type Photo = { key: string; preview: string | null };
 
-export type ListingFormValue = Omit<ListingInput, "societyId"> & { status?: ListingStatus };
+export type ListingFormValue = Omit<ListingInput, "societyId"> & { status?: OwnerListingStatus };
 
 function newId() {
   return Math.random().toString(36).slice(2, 10);
@@ -61,7 +61,7 @@ export function ListingForm({
   const [photos, setPhotos] = useState<Photo[]>(
     (initial?.photoKeys ?? []).map((key, i) => ({ key, preview: initial?.photoUrls?.[i] ?? null })),
   );
-  const [status, setStatus] = useState<ListingStatus>(initial?.status ?? "active");
+  const [status, setStatus] = useState<OwnerListingStatus>(initial?.status === "removed" ? "archived" : (initial?.status ?? "active"));
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +222,7 @@ export function ListingForm({
         </Field>
         {initial ? (
           <Field label="Status" htmlFor="status">
-            <select id="status" className={selectClass} value={status} onChange={(e) => setStatus(e.target.value as ListingStatus)}>
+            <select id="status" className={selectClass} value={status} onChange={(e) => setStatus(e.target.value as OwnerListingStatus)}>
               <option value="active">Active: visible and bookable</option>
               <option value="paused">Paused: hidden for now</option>
               <option value="archived">Archived</option>

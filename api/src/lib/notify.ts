@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { memberships, users } from "../db/schema.js";
 import { sendMail, simpleMail } from "./mailer.js";
@@ -33,7 +33,8 @@ async function notifyUsersNow(userIds: string[], subject: string, text: string, 
   try {
     const ids = [...new Set(userIds)];
     if (!ids.length) return;
-    const rows = await db.select({ email: users.email }).from(users).where(inArray(users.id, ids));
+    // Deleted accounts have a tombstone address; never mail it.
+    const rows = await db.select({ email: users.email }).from(users).where(and(inArray(users.id, ids), isNull(users.deletedAt)));
     await send(rows.map((r) => r.email), subject, text, link);
   } catch (err) {
     log(`notifyUsers failed: ${String(err)}`);

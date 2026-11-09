@@ -13,6 +13,9 @@ export function Footer() {
           <Link href="/terms" className="hover:text-fg hover:underline">
             Terms
           </Link>
+          <Link href="/delete-account" className="hover:text-fg hover:underline">
+            Delete account
+          </Link>
         </nav>
         <span>All rights reserved.</span>
       </div>

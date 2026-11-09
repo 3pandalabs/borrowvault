@@ -30,7 +30,33 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 
 `user = {id, email, displayName, phone, upiVpa|null, isPlatformAdmin, chatPushEnabled: boolean, trust: {score, completed, disputesLost}}`
 
-There is no account-deletion or sign-out-everywhere route. If one is added, it must delete the user's push tokens too (as the password-reset confirm does).
+There is no sign-out-everywhere route. Account deletion is below.
+
+### Account deletion (Google Play: in-app path + web URL `https://borrowvault.3pandalabs.com/delete-account`)
+
+| Method | Path | Auth | Body → Response |
+|---|---|---|---|
+| GET | `/me/deletion` | ✓ | → `{canDelete: boolean, blockers: DeletionBlocker[]}`. A preflight so clients can show what to finish first. Same checks as the delete itself. |
+| POST | `/me/delete` | ✓ | `{password}` → **204**. The current password confirms it: wrong → 403 `{error: "wrong_password", code: "FORBIDDEN"}`. 409 `{error: "account_has_open_obligations", code: "CONFLICT", blockers: DeletionBlocker[]}` while anything below is open. Rate limited: 5 / 15 min per user → 429 `{error: "rate_limited"}`. The client signs out afterwards (its refresh token is already dead). |
+
+`DeletionBlocker = {kind: "live_booking"|"open_dispute"|"unpaid_award"|"refund_owed", bookingId, listingTitle, state}`:
+
+- `live_booking`: a booking where you are lender or borrower in `REQUESTED ACCEPTED DEPOSIT_HELD HANDOVER_PENDING ACTIVE OVERDUE RETURN_PENDING`. Finish it, or cancel/decline it while that is still allowed.
+- `open_dispute`: a booking in `DISPUTED`.
+- `unpaid_award`: a dispute award recorded as a debt (`awardStatus` `debt_recorded` or `paid_claimed`) where you are the payer **or** the payee. Settle it first.
+- `refund_owed`: a refund still due on a `COMPLETED`/`CANCELLED`/`RESOLVED` booking (`refundDuePaise > 0`, not confirmed), either side.
+
+What deletion does, in **one transaction** (after re-checking the blockers under a row lock on the user):
+
+- **Anonymise the user row** (kept, because bookings, disputes, ratings and chat messages reference it): `displayName` → `"Deleted user"`, `email` → a unique tombstone `deleted+<userId>@deleted.invalid`, `phone` → `""`, `upiVpa` → null, password hash → an unusable value, `chatPushEnabled` → false, `isPlatformAdmin` → false, `deleted_at` → now.
+- **Listings**: every listing not already `archived`/`removed` becomes `archived`; `photoKeys` are emptied on all of them.
+- **Memberships**: every pending/approved membership becomes `revoked` (role `resident`, `admin_since` cleared), and `proof_key` is cleared on all of them.
+- **Admin requests**: their own open requests are closed (`pending` → `withdrawn`, `nominated` → `declined`); nominations they made that are still open → `cancelled`. Document keys (`id_proof_key`, `residence_proof_key`, legacy keys) are cleared and `docs_purged_at` is set.
+- **Deleted outright**: sessions (refresh tokens), password-reset tokens, push tokens, and every block row the user is on (either side).
+- **Kept** (shared records with other residents, anonymised through the user row): bookings and their events, payments, inspections, disputes, ratings, conversations, messages (immutable: the sender just shows as "Deleted user"), and message/user/listing reports.
+- **R2**: after the commit the server deletes the membership proof files, `admin-docs/` files and listing photos (best effort: the keys are already gone from the database, so nothing can serve them even if a delete fails). **Inspection evidence is kept** (write-once invariant, and the other party may still need it); it is linked only to the anonymised user row.
+
+Afterwards: login with the old email → 401 `invalid_credentials` (no row has that email any more), refresh → 401, and the address can sign up again as a brand-new account. Access tokens already issued are refused at once by this API process (any authed route → 401 `{error: "account_deleted"}`) and expire within 15 minutes regardless. Nobody can block, report or start a new conversation or booking with a deleted account.
 
 ## Societies & membership
 
@@ -192,18 +218,76 @@ The requester can open their own documents with `GET /storage/url?key=` (keys ar
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/listings?societyId=&kind=&category=&q=&ownerId=me` | approved members of that society only → `ListingSummary[]` (status `active`). No `societyId` = all my approved societies. `ownerId=me` = my own listings across societies, **any status**. |
-| GET | `/listings/:id` | → `Listing`. Owner always; others must be approved members of its society (404 otherwise; archived = 404 to non-owners). |
+| GET | `/listings?societyId=&kind=&category=&q=&ownerId=me` | approved members of that society only → `ListingSummary[]` (status `active`). No `societyId` = all my approved societies. Browse **leaves out** listings whose owner no longer has an approved membership in that listing's society (pending/revoked/rejected, or a deleted account), and listings of anyone the caller has blocked or who has blocked the caller. `ownerId=me` = my own listings across societies, **any status**. |
+| GET | `/listings/:id` | → `Listing`. Owner always; others must be approved members of its society, and get 404 when the listing is `archived` or `removed`, its owner has no approved membership in that society, or either of you has blocked the other. |
 | POST | `/listings` | `{societyId, kind: "item"\|"skill", category, title, description, hourlyPaise?, dailyPaise?, weekendPaise?, depositPaise, replacementValuePaise?, checklistTemplate: ChecklistItem[], requiredPhotoSlots: string[], photoKeys: string[]}` → 201 `Listing`. At least one price is required. `category` must be a `/categories` key whose `kind` matches. For items, `requiredPhotoSlots` needs ≥1 slot. For skills the server **forces** deposit 0 and empty checklist/slots. `photoKeys` must be your own `listing_photo` uploads. Requires `upiVpa` on the profile (400 otherwise). In a pilot society `depositPaise` and `replacementValuePaise` must be ≤ 500000 (400 `pilot_value_cap`). |
-| PATCH | `/listings/:id` | owner only (403 for other members); same fields (all optional) + `status: "active"\|"paused"\|"archived"` → `Listing`. Existing bookings keep their frozen snapshots. Pilot value cap as for POST, checked when the patch sets `depositPaise` or `replacementValuePaise`. |
+| PATCH | `/listings/:id` | owner only (403 for other members); same fields (all optional) + `status: "active"\|"paused"\|"archived"` → `Listing`. Existing bookings keep their frozen snapshots. Pilot value cap as for POST, checked when the patch sets `depositPaise` or `replacementValuePaise`. A listing an admin removed can't be edited or re-activated: 409 `{error: "listing_removed", code: "CONFLICT"}`. |
+| POST | `/listings/:id/report` | `{reason: "prohibited_item"\|"misleading"\|"offensive"\|"scam"\|"other", details?: string (trimmed, ≤1000)}` → **201** `{id, status: "open", createdAt}`. Anyone who can see the listing (404 otherwise). 403 `{error: "cannot_report_own_listing", code: "FORBIDDEN"}` for the owner. 409 `{error: "already_reported", code: "CONFLICT"}` while your earlier report on it is still open. Goes to the society's admins (emailed, best effort, link `/admin/<societyId>/reports`). Rate limited: 20 / hour per user. |
 | GET | `/listings/:id/availability?from=&to=` | → `[{startsAt, endsAt}]` busy ranges (default window: now → +90 days) |
 | GET | `/categories` | public → presets `[{key, label, kind, checklistTemplate, requiredPhotoSlots}]`: items `power_tools camera camping baby party kitchen sports`, skills `baking tutoring pet_sitting home_assembly` |
 
 `ChecklistItem = {id, label, type: "bool"|"percent"|"choice"|"count"|"text", options?: string[]}` (`id` matches `^[a-z0-9_]{1,40}$`; `choice` needs ≥2 options)
 
-`ListingSummary = {id, societyId, kind, category, title, hourlyPaise, dailyPaise, weekendPaise, depositPaise, status, coverUrl: string|null, owner: PartyInfo}`
+`ListingSummary = {id, societyId, kind, category, title, hourlyPaise, dailyPaise, weekendPaise, depositPaise, status: "active"|"paused"|"archived"|"removed", coverUrl: string|null, owner: PartyInfo}`
 
-`Listing = ListingSummary & {description, replacementValuePaise, checklistTemplate, requiredPhotoSlots, photoKeys, photoUrls, createdAt, updatedAt}`. `coverUrl`/`photoUrls` are presigned GETs (10 min), `photoUrls` in the same order as `photoKeys`. Listing photos are shown through these URLs, not through `/storage/url`.
+`Listing = ListingSummary & {description, replacementValuePaise, checklistTemplate, requiredPhotoSlots, photoKeys, photoUrls, removal: {note, removedAt} | null, createdAt, updatedAt}`. `removal` is set only when `status` is `removed` (only the owner can see a removed listing). `coverUrl`/`photoUrls` are presigned GETs (10 min), `photoUrls` in the same order as `photoKeys`. Listing photos are shown through these URLs, not through `/storage/url`.
+
+### Admin takedown (status `removed`)
+
+A society admin of the listing's society, or a platform admin, can take a listing down. It gets its own status, `removed` (not `archived` + a flag), so every "not archived" check treats it the same way: browse, detail, new conversations and new bookings all handle `removed` exactly like `archived`, and the owner can't flip it back (PATCH → 409 `listing_removed`). The owner still sees it in `ownerId=me` and on `GET /listings/:id`, with `removal.note`. **Live bookings on it continue**: they keep their frozen snapshots and every in-flight action works. Only *new* bookings, accepting a still-`REQUESTED` one, and new conversations are refused, as for an archived listing. The owner is emailed (best effort).
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/admin/listings/:id/remove` | `{note: string (trimmed, 5–1000)}` → `Listing` (status `removed`). 404 for non-members of the listing's society, 403 `society_admin_required` for a resident. Repeating it on a removed listing returns it unchanged (200). Every open report on the listing becomes `actioned`. |
+
+## Users: blocking and reporting
+
+**Who counts as related.** You can block or report a user only if you share a society with them (both of you have an **approved** membership in it) **or** you have a conversation or a booking with them. Anyone else, unknown ids and deleted accounts → 404. Your own id → 400 `{error: "cannot_block_self"|"cannot_report_self", code: "VALIDATION"}`.
+
+| Method | Path | Auth | Body → Response |
+|---|---|---|---|
+| POST | `/users/:id/block` | ✓ | no body → **201** `BlockedUser` (200 with the existing one if you had already blocked them). Rate limited: 30 / hour per user. |
+| DELETE | `/users/:id/block` | ✓ | → **204** always (also when there was no block). |
+| GET | `/me/blocks` | ✓ | → `BlockedUser[]` (the people **you** blocked), newest first. Who blocked you is never shown. |
+| POST | `/users/:id/report` | ✓ | `{reason: "harassment"\|"spam"\|"scam"\|"inappropriate"\|"other", details?: string (trimmed, ≤1000)}` → **201** `{id, status: "open", createdAt}`. 409 `{error: "already_reported", code: "CONFLICT"}` while your earlier report on them is still open. Rate limited: 20 / hour per user. The report is filed under one society you share (a society where you both have approved memberships first, else the society of your newest conversation or booking with them). That society's admins **and** the platform admins are emailed (best effort, no content; link `/admin/<societyId>/reports`). |
+
+`BlockedUser = {user: {id, displayName}, createdAt}`
+
+**What a block does (either direction: A blocked B, or B blocked A).**
+
+- **Chat**: in any conversation between them, `canSend` is false for both, and `POST /conversations/:id/messages` → 403 `{error: "blocked", code: "FORBIDDEN"}`. Both can still read it. `Conversation.blockedByMe` tells the client whether to offer Unblock.
+- **New conversations**: `POST /conversations` and `POST /bookings/:id/conversation` → 403 `{error: "blocked", code: "FORBIDDEN"}` when no conversation exists yet (an existing one is still returned, read-only).
+- **New bookings**: `POST /bookings` → 403 `{error: "blocked", code: "FORBIDDEN"}`.
+- **Browse**: neither sees the other's listings in `GET /listings`, and `GET /listings/:id` → 404.
+- **Existing bookings continue.** Money and obligations are involved, so every action on a booking that already exists (accept, pay, inspect, return, dispute, refund, award, rating) works as before. The two coordinate through the booking screens; if that breaks down, the dispute flow and the society admins are the way out.
+
+### Reports review (society admin; platform admins too)
+
+Message reports (under Chat), user reports and listing reports share one "Reports" page in the society console (`/admin/<societyId>/reports`). The arbiter rule applies: reports where the caller is the reporter, the reported user or the listing owner, or lives in either side's unit, are **left out** (and 404 on the action routes).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/admin/societies/:id/user-reports?status=open\|closed` | default `open` → `UserReport[]`, newest first, max 100. `closed` = `reviewed` + `dismissed`. 404 non-member, 403 `society_admin_required` for a resident. |
+| POST | `/admin/user-reports/:id/review` | `{decision: "reviewed"\|"dismissed", note?: string (≤1000)}` → `UserReport`. Records the decision only; to act on a person, revoke their membership as usual. Repeating it on a closed report returns it unchanged. |
+| GET | `/admin/societies/:id/listing-reports?status=open\|closed` | default `open` → `ListingReport[]`, newest first, max 100. `closed` = `dismissed` + `actioned`. |
+| POST | `/admin/listing-reports/:id/dismiss` | `{note?: string (≤1000)}` → `ListingReport` (status `dismissed`). Unchanged if already closed. To take the listing down use `POST /admin/listings/:id/remove`, which marks its open reports `actioned`. |
+
+```
+UserReport = {
+  id, societyId, status: "open"|"reviewed"|"dismissed",
+  reason: "harassment"|"spam"|"scam"|"inappropriate"|"other", details: string|null,
+  reporter: PartyInfo, reported: PartyInfo,       // PartyInfo in the report's society
+  createdAt, reviewedAt: string|null, reviewNote: string|null
+}
+
+ListingReport = {
+  id, societyId, status: "open"|"dismissed"|"actioned",
+  reason: "prohibited_item"|"misleading"|"offensive"|"scam"|"other", details: string|null,
+  reporter: PartyInfo,
+  listing: {id, title, status, coverUrl: string|null, owner: PartyInfo},
+  createdAt, reviewedAt: string|null, reviewNote: string|null
+}
+```
 
 ## Bookings (state machine: see infra/blueprint.md §5)
 
@@ -213,7 +297,7 @@ The requester can open their own documents with `GET /storage/url?key=` (keys ar
 
 | Method | Path | Who | Effect |
 |---|---|---|---|
-| POST | `/bookings` | borrower | `{listingId, startsAt, endsAt, pricing: "hourly"\|"daily"\|"weekend"}` → 201 `Booking` (REQUESTED). 409 `OVERLAP` if busy. Fee: hourly = ceil(hours)×rate, daily = ceil(24 h days)×rate, weekend = flat. Max 30 days. 403 if the borrower has an unpaid dispute award or trust < 2.0. Weekend pricing: the booking must start no earlier than Fri 12:00 IST and end no later than Mon 12:00 IST of the same weekend (else 400). |
+| POST | `/bookings` | borrower | `{listingId, startsAt, endsAt, pricing: "hourly"\|"daily"\|"weekend"}` → 201 `Booking` (REQUESTED). 403 `blocked` if either party has blocked the other. 409 `OVERLAP` if busy. Fee: hourly = ceil(hours)×rate, daily = ceil(24 h days)×rate, weekend = flat. Max 30 days. 403 if the borrower has an unpaid dispute award or trust < 2.0. Weekend pricing: the booking must start no earlier than Fri 12:00 IST and end no later than Mon 12:00 IST of the same weekend (else 400). |
 | GET | `/bookings?role=lender\|borrower&state=` | ✓ | → `Booking[]` |
 | GET | `/bookings/:id` | party, or society/platform admin if DISPUTED/RESOLVED | → `BookingDetail` |
 | POST | `/bookings/:id/accept` | lender | → ACCEPTED; `payment` is now populated. 409 `OVERLAP` if another booking took the slot. 400 if the lender has no `upiVpa`. Requires an approved membership and an `active` listing (409 `CONFLICT` otherwise); 409 `WINDOW_PASSED` once `now >= endsAt`. |
@@ -260,19 +344,19 @@ One **conversation per (listing, borrower)**. Its participants are exactly the l
 
 | Method | Path | Who | Body → Response |
 |---|---|---|---|
-| POST | `/conversations` | borrower-to-be | `{listingId}` → `Conversation`: **200** if the caller already has a conversation on that listing, **201** if it was just created. 403 `{error: "cannot_message_own_listing", code: "FORBIDDEN"}` for the listing's owner. Creating a new one needs an **approved** membership in the listing's society and a listing that isn't `archived` (`active` and `paused` are fine); otherwise 404 (unknown listing, other society, pending/revoked membership, archived: all look the same). An existing conversation is always returned (200), whatever the listing/membership status. Rate limited: 20 / hour per user → 429 `{error: "rate_limited"}`. |
+| POST | `/conversations` | borrower-to-be | `{listingId}` → `Conversation`: **200** if the caller already has a conversation on that listing, **201** if it was just created. 403 `{error: "cannot_message_own_listing", code: "FORBIDDEN"}` for the listing's owner. Creating a new one needs an **approved** membership in the listing's society and a listing that isn't `archived` or `removed` (`active` and `paused` are fine); otherwise 404 (unknown listing, other society, pending/revoked membership, archived/removed: all look the same). 403 `{error: "blocked", code: "FORBIDDEN"}` when either side has blocked the other and no conversation exists yet. An existing conversation is always returned (200), whatever the listing/membership status. Rate limited: 20 / hour per user → 429 `{error: "rate_limited"}`. |
 | POST | `/bookings/:id/conversation` | booking party (lender or borrower) | no body → `Conversation` for that booking's (listing, borrower), **200** existing / **201** created. Works for any booking state. 404 for anyone else (admins included: they use `BookingDetail.conversationId`). Rate limited: 20 / hour per user (separate bucket). |
 | GET | `/conversations` | ✓ | → `ConversationSummary[]`, newest activity first (`lastMessageAt`, else `createdAt`), max 100. The borrower sees every conversation they opened; the **owner only sees conversations that have at least one message**. |
 | GET | `/conversations/unread` | ✓ | → `{total: number, byConversation: {[conversationId]: number}}` (only conversations with unread > 0 appear in `byConversation`). Counts messages from the other participant after your read marker. |
 | GET | `/conversations/:id` | participant, or eligible admin (below) | → `Conversation`. 404 otherwise. |
 | GET | `/conversations/:id/messages?after=&before=&limit=` | participant, or eligible admin | → `{messages: Message[], hasMore: boolean}` (see Paging). Reading does **not** mark anything read. |
-| POST | `/conversations/:id/messages` | participant | `{body: string}` → **201** `Message`. `body` is trimmed, then must be 1–2000 characters (Unicode code points): 400 `{error: "message_empty"\|"message_too_long", code: "VALIDATION"}`. 409 `{error: "conversation_closed", code: "CONFLICT"}` when `canSend` is false. 403 `{error: "participants_only", code: "FORBIDDEN"}` for an eligible admin. Rate limited: 30 / minute per user → 429 `{error: "rate_limited"}`. Sending also moves your read marker to your new message (everything before it counts as read for you). |
+| POST | `/conversations/:id/messages` | participant | `{body: string}` → **201** `Message`. `body` is trimmed, then must be 1–2000 characters (Unicode code points): 400 `{error: "message_empty"\|"message_too_long", code: "VALIDATION"}`. 403 `{error: "blocked", code: "FORBIDDEN"}` when either participant has blocked the other. 409 `{error: "conversation_closed", code: "CONFLICT"}` when `canSend` is false. 403 `{error: "participants_only", code: "FORBIDDEN"}` for an eligible admin. Rate limited: 30 / minute per user → 429 `{error: "rate_limited"}`. Sending also moves your read marker to your new message (everything before it counts as read for you). |
 | POST | `/conversations/:id/read` | participant | `{upToMessageId?: uuid}` → **204** (send `{}` to mark everything read; an empty body with `Content-Type: application/json` is a 400). Moves your read marker to that message (it must belong to this conversation, else 400 `invalid_cursor`); without it, to the latest message. The marker never moves backwards. 403 `participants_only` for an eligible admin. |
-| POST | `/messages/:id/report` | participant | `{reason: string}` (trimmed, 5–500 chars, else 400) → **201** `{id, messageId, status: "open", createdAt}`. Only the **other** participant's messages: 403 `{error: "cannot_report_own_message", code: "FORBIDDEN"}`. Once per message per reporter: 409 `{error: "already_reported", code: "CONFLICT"}`. 403 `participants_only` for an eligible admin; 404 for everyone else. The society's admins are emailed (best effort, no message content; link `/admin/<societyId>/message-reports`). Rate limited: 20 / hour per user. |
+| POST | `/messages/:id/report` | participant | `{reason: string}` (trimmed, 5–500 chars, else 400) → **201** `{id, messageId, status: "open", createdAt}`. Only the **other** participant's messages: 403 `{error: "cannot_report_own_message", code: "FORBIDDEN"}`. Once per message per reporter: 409 `{error: "already_reported", code: "CONFLICT"}`. 403 `participants_only` for an eligible admin; 404 for everyone else. The society's admins are emailed (best effort, no message content; link `/admin/<societyId>/reports`). Rate limited: 20 / hour per user. |
 
 There are **no** `PATCH`/`PUT`/`DELETE` routes for conversations or messages.
 
-**Who may send (`canSend`).** A participant may send when **either** (a) a booking of this listing by this borrower is live (`REQUESTED ACCEPTED DEPOSIT_HELD HANDOVER_PENDING ACTIVE OVERDUE RETURN_PENDING DISPUTED`) or changed state within the last **7 days** (covers refund/award follow-ups after COMPLETED/RESOLVED/CANCELLED), **or** (b) the listing isn't `archived` **and** the sender has an approved membership in the society. Otherwise the conversation is read-only for them (`canSend: false`, send → 409 `conversation_closed`). Participants can always read their conversations, even after the listing is archived or their membership is revoked.
+**Who may send (`canSend`).** Never while either participant has blocked the other (see "Users: blocking and reporting"). Otherwise a participant may send when **either** (a) a booking of this listing by this borrower is live (`REQUESTED ACCEPTED DEPOSIT_HELD HANDOVER_PENDING ACTIVE OVERDUE RETURN_PENDING DISPUTED`) or changed state within the last **7 days** (covers refund/award follow-ups after COMPLETED/RESOLVED/CANCELLED), **or** (b) the listing isn't `archived` or `removed` **and** the sender has an approved membership in the society. Otherwise the conversation is read-only for them (`canSend: false`, send → 409 `conversation_closed`). Participants can always read their conversations, even after the listing is archived or their membership is revoked.
 
 **Admin read access (disputes).** While any booking of this listing by this borrower is `DISPUTED` or `RESOLVED`, the society's admins and platform admins can read the **whole** conversation (`GET /conversations/:id` and `/messages`), read-only, with `myRole: "admin"`, `canSend: false`, `unreadCount: 0`. The arbiter rule applies: an admin who lives in either participant's unit gets 404. Admins find the conversation through `BookingDetail.conversationId` on `GET /bookings/:id` (`null` = the parties never chatted). Admins can't send, mark read or report (403 `participants_only`).
 
@@ -288,10 +372,11 @@ Message = {id, senderId, body, createdAt}
 
 Conversation = {
   id, societyId,
-  listing: {id, title, status: "active"|"paused"|"archived", coverUrl: string|null},
+  listing: {id, title, status: "active"|"paused"|"archived"|"removed", coverUrl: string|null},
   owner: PartyInfo, borrower: PartyInfo,
   myRole: "owner"|"borrower"|"admin",
   canSend: boolean,
+  blockedByMe: boolean,            // the caller has blocked the other participant (false for admins)
   unreadCount: number,             // for the caller; 0 for admins
   activeBookingId: string|null,    // newest live booking of this listing by this borrower (live = the states listed under canSend (a))
   bookings: [{id, state, startsAt, endsAt}],   // every booking of this listing by this borrower, newest first
@@ -360,6 +445,8 @@ A report doesn't give the admin access to the rest of the conversation; only a D
 - Refund owed (p2p deposit after COMPLETED, or fee/+deposit after a paid CANCELLED): 24 h without `refund-confirm` → auto dispute (`category: "late"`, `raisedBy: "system"` on behalf of the borrower; COMPLETED/CANCELLED → DISPUTED is a system-only move). Its ruling's `awardPaise` = the amount the lender must still refund.
 
 ## Ops
+
+**Request logs.** Fastify request logs keep the method and **path only**: any query string is replaced by `?[redacted]`, so search terms (`GET /listings?q=`), storage keys (`/storage/url?key=`) and the like never reach the 30-day logs.
 
 | GET | `/health` | → `{ok: true, commit, startedAt}` |
 | GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"`. `counts` keys: `users, liveSocieties, pilotSocieties, approvedMembers, pendingMembers, adminRequestsPending, activeListings, bookings, openBookings, completedBookings, openDisputes, activeSessions, conversations, messagesLast24h, openMessageReports, lifetimeBookingsCreated, lifetimeBookingsCompleted, lifetimeListingsCreated`. The three `lifetime*` keys are sums over `platform_stats_daily` (see "Lifetime stats"), so they survive the 3-year purge and lag the live tables by up to an hour. |

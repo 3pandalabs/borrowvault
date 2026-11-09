@@ -154,7 +154,7 @@ function Browse() {
                 <div className="mb-1 flex items-center gap-2">
                   <Badge variant={l.kind === "skill" ? "info" : "muted"}>{l.kind === "skill" ? "Skill" : "Item"}</Badge>
                   <span className="truncate text-xs text-fg-muted">{catLabel(l.category)}</span>
-                  {l.status !== "active" ? <Badge variant="warn">{l.status}</Badge> : null}
+                  {l.status === "removed" ? <Badge variant="bad">Removed</Badge> : l.status !== "active" ? <Badge variant="warn">{l.status}</Badge> : null}
                 </div>
                 <p className="font-medium group-hover:text-accent">{l.title}</p>
                 <p className="mt-1 text-sm text-fg">{priceLine(l)}</p>

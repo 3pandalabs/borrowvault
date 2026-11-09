@@ -45,6 +45,7 @@ export default function Pending() {
       ))}
       <Button title="Check now" variant="secondary" onPress={() => void refresh()} />
       <Button title="Sign out" variant="ghost" onPress={() => void signOut()} />
+      <Button title="Delete account" variant="ghost" onPress={() => router.push("/delete-account")} />
     </Screen>
   );
 }

@@ -27,7 +27,8 @@ function RootNavigation() {
     if (approved.length === 0) {
       // Not yet a verified resident anywhere: only onboarding is reachable.
       const pending = memberships.some((m) => m.status === "pending");
-      if (!inOnboarding) router.replace(pending ? "/onboarding/pending" : "/onboarding");
+      // Account deletion must be reachable before approval too (Play policy).
+      if (!inOnboarding && group !== "delete-account") router.replace(pending ? "/onboarding/pending" : "/onboarding");
       return;
     }
     if (inAuth) router.replace("/(tabs)");

@@ -24,6 +24,14 @@
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "web": {
@@ -44,15 +52,17 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "BorrowVault reads your location only at the moment you take a handover or return photo, to confirm it was taken inside your society. We never track you in the background.",
+          "locationWhenInUsePermission": "BorrowVault uses your location only while the handover or return camera screen is open. It checks your position about every 2 seconds there, to confirm the photos are taken inside your society. It never uses your location in the background.",
           "locationAlwaysAndWhenInUsePermission": false,
-          "locationAlwaysPermission": false
+          "locationAlwaysPermission": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "BorrowVault lets you pick photos from your gallery for your listings and your address proof. Handover and return photos always use the in-app camera.",
+          "photosPermission": "BorrowVault lets you choose photos for your listings and your address proof. You pick each photo yourself. Handover and return photos always use the in-app camera.",
           "cameraPermission": "BorrowVault uses your camera to photograph your address proof (for example, a maintenance bill or rent agreement) for your society admin to verify.",
           "microphonePermission": false
         }

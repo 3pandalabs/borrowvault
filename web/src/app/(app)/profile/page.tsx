@@ -1,12 +1,13 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
+import { Ban, CheckCircle2, ChevronRight, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ErrorText, Field, PageHeader, Panel, PanelTitle, TrustBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorMessage, updateMe } from "@/lib/api";
+import { errorMessage, myBlocks, unblockUser, updateMe } from "@/lib/api";
+import { useAction, useAsync } from "@/lib/hooks";
 import { PHONE_RE, VPA_RE } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
@@ -148,6 +149,70 @@ export default function ProfilePage() {
           </li>
         </ul>
       </Panel>
+
+      <BlockedUsers />
+
+      <Panel className="mt-4">
+        <PanelTitle>Delete account</PanelTitle>
+        <p className="mb-3 text-sm text-fg-muted">
+          Removes your name, contact details, listings and documents. Records shared with neighbours, like past bookings
+          and chats, stay but show you as “Deleted user”.
+        </p>
+        <Link href="/delete-account">
+          <Button variant="outline" size="sm">
+            <Trash2 /> Delete my account
+          </Button>
+        </Link>
+      </Panel>
     </div>
+  );
+}
+
+function BlockedUsers() {
+  const list = useAsync(myBlocks, "my-blocks");
+  const action = useAction();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  return (
+    <Panel className="mt-4">
+      <PanelTitle>Blocked users</PanelTitle>
+      <p className="mb-3 text-sm text-fg-muted">
+        You and the people you block can&apos;t message each other or start new bookings, and you don&apos;t see each
+        other&apos;s listings. Bookings you already have carry on.
+      </p>
+      {list.error ? (
+        <ErrorText>{errorMessage(list.error)}</ErrorText>
+      ) : !list.data ? (
+        <p className="text-sm text-fg-muted">Loading…</p>
+      ) : list.data.length === 0 ? (
+        <p className="text-sm text-fg-muted">You haven&apos;t blocked anyone.</p>
+      ) : (
+        <ul className="divide-y divide-line rounded-xl border border-line">
+          {list.data.map((b) => (
+            <li key={b.user.id} className="flex items-center justify-between gap-2 px-4 py-3 text-sm">
+              <span className="flex items-center gap-2">
+                <Ban className="size-4 text-fg-muted" /> {b.user.displayName}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={action.busy}
+                onClick={() => {
+                  setBusyId(b.user.id);
+                  void action
+                    .run(async () => {
+                      await unblockUser(b.user.id);
+                      list.setData(list.data!.filter((x) => x.user.id !== b.user.id));
+                    }, errorMessage)
+                    .finally(() => setBusyId(null));
+                }}
+              >
+                {busyId === b.user.id ? <Loader2 className="animate-spin" /> : null} Unblock
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ErrorText>{action.error}</ErrorText>
+    </Panel>
   );
 }

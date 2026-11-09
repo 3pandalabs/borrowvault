@@ -73,6 +73,11 @@ vi.mock("../src/lib/authz.js", () => ({
 
 vi.mock("../src/lib/notify.js", () => ({ notifySocietyAdmins: vi.fn(async () => {}) }));
 
+vi.mock("../src/lib/blocks.js", () => ({
+  blockedEitherWay: vi.fn(async () => false),
+  hasBlocked: vi.fn(async () => false),
+}));
+
 vi.mock("../src/chat/store.js", () => {
   const conv = () => ({
     id: CONV,

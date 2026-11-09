@@ -1,10 +1,11 @@
 "use client";
 
-import { CalendarDays, ImageOff, Loader2, Pencil } from "lucide-react";
+import { CalendarDays, Flag, ImageOff, Loader2, Pencil, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { OpenChatButton } from "@/components/chat";
+import { BlockButton, ReportListingDialog, ReportUserDialog } from "@/components/safety";
 import { EmptyState, ErrorText, Field, LoadError, Loading, Panel, PanelTitle, selectClass, TrustBadge } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import type { Listing, PricingUnit } from "@/lib/types";
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useSession();
+  const router = useRouter();
   const listing = useAsync(() => getListing(id), `listing:${id}`);
 
   if (listing.error) return <LoadError error={listing.error} onRetry={listing.reload} />;
@@ -49,7 +51,11 @@ export default function ListingDetailPage() {
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant={l.kind === "skill" ? "info" : "muted"}>{l.kind === "skill" ? "Skill" : "Item"}</Badge>
             <span className="text-sm text-fg-muted">{l.category}</span>
-            {l.status !== "active" ? <Badge variant="warn">{l.status}</Badge> : null}
+            {l.status === "removed" ? (
+              <Badge variant="bad">Removed</Badge>
+            ) : l.status !== "active" ? (
+              <Badge variant="warn">{l.status}</Badge>
+            ) : null}
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{l.title}</h1>
           <p className="mt-1 text-lg">{priceLine(l)}</p>
@@ -67,6 +73,7 @@ export default function ListingDetailPage() {
             </span>
             <TrustBadge trust={l.owner.trust} />
           </div>
+          {!isOwner ? <OwnerSafety listing={l} onBlocked={() => router.push("/listings")} /> : null}
         </Panel>
 
         {l.kind === "item" && (l.checklistTemplate.length || l.requiredPhotoSlots.length) ? (
@@ -94,7 +101,21 @@ export default function ListingDetailPage() {
       </div>
 
       <div className="space-y-4">
-        {isOwner ? (
+        {isOwner && l.status === "removed" ? (
+          <Panel className="border-rose-200 bg-rose-50">
+            <PanelTitle>
+              <span className="flex items-center gap-2 text-rose-900">
+                <ShieldAlert className="size-4" /> Removed by a society admin
+              </span>
+            </PanelTitle>
+            {l.removal?.note ? (
+              <p className="mb-2 whitespace-pre-wrap text-sm text-rose-900 [overflow-wrap:anywhere]">{l.removal.note}</p>
+            ) : null}
+            <p className="text-sm text-rose-900">
+              {`Neighbours can't see it or book it any more. You can't edit it or put it back up. Bookings that were already under way carry on as normal.`}
+            </p>
+          </Panel>
+        ) : isOwner ? (
           <Panel>
             <PanelTitle>This is your listing</PanelTitle>
             <p className="mb-3 text-sm text-fg-muted">Requests from neighbours show up in your bookings.</p>
@@ -140,6 +161,58 @@ export default function ListingDetailPage() {
   );
 }
 
+/** Block / report the owner, report the listing (non-owners only). */
+function OwnerSafety({ listing: l, onBlocked }: { listing: Listing; onBlocked: () => void }) {
+  const [dialog, setDialog] = useState<"user" | "listing" | null>(null);
+  const [done, setDone] = useState<{ user?: boolean; listing?: boolean }>({});
+  return (
+    <div className="mt-3 flex flex-wrap items-start gap-2">
+      {done.listing ? (
+        <span className="inline-flex h-9 items-center gap-1 text-sm text-amber-700">
+          <Flag className="size-4" /> Listing reported
+        </span>
+      ) : (
+        <Button size="sm" variant="ghost" onClick={() => setDialog("listing")}>
+          <Flag /> Report listing
+        </Button>
+      )}
+      {done.user ? (
+        <span className="inline-flex h-9 items-center gap-1 text-sm text-amber-700">
+          <Flag className="size-4" /> {`${l.owner.displayName} reported`}
+        </span>
+      ) : (
+        <Button size="sm" variant="ghost" onClick={() => setDialog("user")}>
+          <Flag /> Report {l.owner.displayName}
+        </Button>
+      )}
+      {/* Blocking hides their listings, this one included, so leave the page. */}
+      <BlockButton userId={l.owner.id} name={l.owner.displayName} blocked={false} onChanged={(b) => b && onBlocked()} />
+      {dialog === "listing" ? (
+        <ReportListingDialog
+          listingId={l.id}
+          title={l.title}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            setDone((d) => ({ ...d, listing: true }));
+          }}
+        />
+      ) : null}
+      {dialog === "user" ? (
+        <ReportUserDialog
+          userId={l.owner.id}
+          name={l.owner.displayName}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            setDone((d) => ({ ...d, user: true }));
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function RequestForm({ listing: l }: { listing: Listing }) {
   const router = useRouter();
   const units = (
@@ -181,7 +254,7 @@ function RequestForm({ listing: l }: { listing: Listing }) {
       router.push(`/bookings/${b.id}`);
     } catch (err) {
       setError(
-        err instanceof ApiError && err.status === 403
+        err instanceof ApiError && err.status === 403 && err.message !== "blocked"
           ? `You can't borrow right now. Borrowing is paused while you owe an unpaid dispute award or your trust score is below 2.0.${err.message && err.message !== "request_failed" ? ` (${err.message})` : ""}`
           : errorMessage(err),
       );

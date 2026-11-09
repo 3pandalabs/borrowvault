@@ -1,15 +1,20 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import { OCCUPYING_STATES } from "../booking/states.js";
 import { trustOf } from "../booking/view.js";
 import { db } from "../db/index.js";
-import { bookings, listings, users, type ChecklistItem } from "../db/schema.js";
-import { approvedMembership, approvedSocietyIds, requireApprovedMember, unitLabels } from "../lib/authz.js";
+import { bookings, LISTING_REPORT_REASONS, listings, users, type ChecklistItem } from "../db/schema.js";
+import { approvedMembership, approvedSocietyIds, requireApprovedMember, requireSocietyAdmin, unitLabels } from "../lib/authz.js";
+import { notBlockedWith } from "../lib/blocks.js";
 import { CATEGORIES, CATEGORY_BY_KEY } from "../lib/categories.js";
-import { forbidden, invalid, notFound } from "../lib/errors.js";
+import { DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
+import { ownerStillMember, visibleListing, type ListingRow } from "../lib/listingAccess.js";
+import * as moderation from "../lib/moderation.js";
+import { notifySocietyAdmins, notifyUsers } from "../lib/notify.js";
+import { clientKey, registerRateLimit } from "../plugins/rateLimit.js";
 import { assertPilotListingValues } from "../lib/pilot.js";
 import { societyTierOf } from "../lib/societyTier.js";
 import { parseKey, presignDownload } from "../plugins/r2.js";
@@ -49,7 +54,6 @@ const patchBody = z
   })
   .partial() as z.ZodType<Partial<z.infer<typeof createBody>> & { status?: "active" | "paused" | "archived" }>;
 
-type ListingRow = typeof listings.$inferSelect;
 type ListingInput = Omit<z.infer<typeof createBody>, "societyId">;
 
 /** Validates and normalises a full listing (after merging a PATCH). Throws 400. */
@@ -124,24 +128,74 @@ async function full(r: ListingRow) {
     requiredPhotoSlots: r.requiredPhotoSlots,
     photoKeys: r.photoKeys,
     photoUrls: await Promise.all(r.photoKeys.map((k) => presignDownload(k))),
+    removal: r.status === "removed" ? { note: r.removalNote ?? "", removedAt: (r.removedAt ?? r.updatedAt).toISOString() } : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
 }
 
-/** Listing visible to the caller (approved member of its society, or owner). 404 otherwise. */
-async function visibleListing(id: string, userId: string): Promise<ListingRow> {
-  const [l] = await db.select().from(listings).where(eq(listings.id, id)).limit(1);
-  if (!l) throw notFound();
-  if (l.ownerId !== userId) {
-    await requireApprovedMember(userId, l.societyId);
-    if (l.status === "archived") throw notFound();
-  }
-  return l;
-}
 
 export async function listingRoutes(fastify: FastifyInstance) {
+  await registerRateLimit(fastify);
   const app = fastify.withTypeProvider<ZodTypeProvider>();
+  const perUser = (req: FastifyRequest) => (req.userId ? `user:${req.userId}` : clientKey(req));
+
+  // --- reports and admin takedown (api/ROUTES.md "Admin takedown") ----------
+
+  app.post(
+    "/listings/:id/report",
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: { max: 20, timeWindow: 3_600_000, keyGenerator: perUser } },
+      schema: {
+        params: z.object({ id: uuid }),
+        body: z.object({ reason: z.enum(LISTING_REPORT_REASONS), details: moderation.reportDetails }),
+      },
+    },
+    async (req, reply) => {
+      const me = req.userId!;
+      const l = await visibleListing(req.params.id, me);
+      if (l.ownerId === me) throw forbidden("cannot_report_own_listing");
+      const r = await moderation.insertListingReport({
+        listingId: l.id,
+        societyId: l.societyId,
+        reporterId: me,
+        reason: req.body.reason,
+        details: req.body.details ?? null,
+      });
+      if (!r) throw new DomainError("CONFLICT", "already_reported");
+      void notifySocietyAdmins(
+        l.societyId,
+        "A listing was reported",
+        "A resident reported a listing. Review it in the society console.",
+        `/admin/${l.societyId}/reports`,
+      );
+      return reply.code(201).send({ id: r.id, status: r.status, createdAt: r.createdAt.toISOString() });
+    },
+  );
+
+  app.post(
+    "/admin/listings/:id/remove",
+    {
+      preHandler: requireAuth,
+      schema: { params: z.object({ id: uuid }), body: z.object({ note: z.string().trim().min(5).max(1000) }) },
+    },
+    async (req) => {
+      const me = req.userId!;
+      const [l] = await db.select().from(listings).where(eq(listings.id, req.params.id)).limit(1);
+      if (!l) throw notFound();
+      await requireSocietyAdmin(me, l.societyId);
+      if (l.status === "removed") return full(l);
+      const row = await moderation.removeListing(l.id, me, req.body.note);
+      void notifyUsers(
+        [l.ownerId],
+        "Your listing was removed",
+        `A society admin removed your listing "${l.title}". Note from the admin: ${req.body.note}`,
+        `/listings/${l.id}`,
+      );
+      return full(row);
+    },
+  );
 
   app.get("/categories", async () => CATEGORIES);
 
@@ -173,7 +227,13 @@ export async function listingRoutes(fastify: FastifyInstance) {
       const where = q.ownerId === "me"
         ? and(eq(listings.ownerId, me), q.societyId ? eq(listings.societyId, q.societyId) : undefined)
         : societyIds.length
-          ? and(inArray(listings.societyId, societyIds), eq(listings.status, "active"))
+          ? and(
+              inArray(listings.societyId, societyIds),
+              eq(listings.status, "active"),
+              // Hide listings whose owner left, was revoked or deleted, and anyone blocked either way.
+              ownerStillMember,
+              notBlockedWith(me, listings.ownerId),
+            )
           : undefined;
       if (!where) return [];
       const rows = await db
@@ -226,6 +286,7 @@ export async function listingRoutes(fastify: FastifyInstance) {
     const me = req.userId!;
     const current = await visibleListing(req.params.id, me);
     if (current.ownerId !== me) throw forbidden("only the owner can edit a listing");
+    if (current.status === "removed") throw new DomainError("CONFLICT", "listing_removed");
     if (!(await approvedMembership(me, current.societyId))) throw notFound();
     const { status, ...patch } = req.body as Partial<z.infer<typeof createBody>> & { status?: "active" | "paused" | "archived" };
     delete (patch as { societyId?: string }).societyId;

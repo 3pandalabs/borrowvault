@@ -98,6 +98,7 @@ export default function SocietySearch() {
         <ErrorText>{linkError}</ErrorText>
       </Card>
       <Button title="Sign out" variant="ghost" onPress={() => void signOut()} />
+      <Button title="Delete account" variant="ghost" onPress={() => router.push("/delete-account")} />
     </Screen>
   );
 }

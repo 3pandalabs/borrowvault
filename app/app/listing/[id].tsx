@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, Text, View } from "react-native";
 import { DateTimeField } from "../../src/components/DateTimeField";
 import { slotTitle } from "../../src/components/Evidence";
+import { confirmBlock, ReportModal, type ReportTarget } from "../../src/components/Safety";
 import { Button, Card, Chip, ErrorText, H1, H2, KV, Loading, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader, useNow } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -46,6 +47,7 @@ export default function ListingDetail() {
   const action = useAction();
   const ask = useAction();
   const now = useNow(30_000);
+  const [report, setReport] = useState<ReportTarget | null>(null);
 
   useEffect(() => {
     if (!l) return;
@@ -110,7 +112,15 @@ export default function ListingDetail() {
       ) : null}
       <H1>{l.title}</H1>
       <Text style={{ fontSize: 16, fontWeight: "700", color: colors.accent }}>{priceLine(l)}</Text>
-      {l.status !== "active" ? <Chip label={`This listing is ${l.status}`} tone="warn" /> : null}
+      {l.status === "removed" ? (
+        <Card style={{ borderColor: colors.danger }}>
+          <H2>Removed by a society admin</H2>
+          {l.removal?.note ? <P>{l.removal.note}</P> : null}
+          <P muted>{"Nobody else can see it, and it can't be put back. Bookings that are already running carry on."}</P>
+        </Card>
+      ) : l.status !== "active" ? (
+        <Chip label={`This listing is ${l.status}`} tone="warn" />
+      ) : null}
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View>
@@ -131,6 +141,17 @@ export default function ListingDetail() {
               onPress={() => void askQuestion()}
             />
             <ErrorText>{ask.error}</ErrorText>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <Chip
+                label={`Block ${l.owner.displayName}`}
+                onPress={() => void confirmBlock(l.owner).then((ok) => ok && router.back())}
+              />
+              <Chip
+                label={`Report ${l.owner.displayName}`}
+                onPress={() => setReport({ type: "user", id: l.owner.id, name: l.owner.displayName })}
+              />
+              <Chip label="Report listing" onPress={() => setReport({ type: "listing", id: l.id, name: l.title })} />
+            </View>
           </>
         ) : null}
       </Card>
@@ -189,6 +210,7 @@ export default function ListingDetail() {
           <Button title="Send request" onPress={request} busy={action.busy} disabled={!valid} />
         </Card>
       ) : null}
+      <ReportModal target={report} onClose={() => setReport(null)} />
     </Screen>
   );
 }

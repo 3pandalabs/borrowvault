@@ -193,7 +193,9 @@ export type PartyInfo = {
 // ---- Listings ----
 
 export type ListingKind = "item" | "skill";
-export type ListingStatus = "active" | "paused" | "archived";
+export type ListingStatus = "active" | "paused" | "archived" | "removed";
+/** Statuses an owner can set with PATCH (an admin sets "removed"). */
+export type OwnerListingStatus = "active" | "paused" | "archived";
 export type ChecklistType = "bool" | "percent" | "choice" | "count" | "text";
 
 /** `id` matches ^[a-z0-9_]{1,40}$; `choice` needs ≥2 options. */
@@ -228,7 +230,7 @@ export type ListingInput = {
   photoKeys: string[];
 };
 
-export type ListingPatch = Partial<Omit<ListingInput, "societyId">> & { status?: ListingStatus };
+export type ListingPatch = Partial<Omit<ListingInput, "societyId">> & { status?: OwnerListingStatus };
 
 export type ListingSummary = {
   id: string;
@@ -253,6 +255,8 @@ export type Listing = ListingSummary & {
   photoKeys: string[];
   /** Presigned GETs (10 min), same order as photoKeys. */
   photoUrls: string[];
+  /** Set only when status is "removed" (only the owner sees a removed listing). */
+  removal: { note: string; removedAt: string } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -450,6 +454,8 @@ export type Conversation = {
   /** "admin" = read-only dispute access (canSend false, unreadCount 0). */
   myRole: "owner" | "borrower" | "admin";
   canSend: boolean;
+  /** The caller has blocked the other participant (false for admins). */
+  blockedByMe: boolean;
   unreadCount: number;
   /** Newest live booking of this listing by this borrower. */
   activeBookingId: string | null;
@@ -479,6 +485,48 @@ export type UnreadCounts = { total: number; byConversation: Record<string, numbe
 export type MessagePage = { messages: Message[]; hasMore: boolean };
 
 export type MessageReportReceipt = { id: string; messageId: string; status: "open"; createdAt: string };
+
+// ---- Account deletion (ROUTES.md "Account deletion") ----
+
+export type DeletionBlockerKind = "live_booking" | "open_dispute" | "unpaid_award" | "refund_owed";
+export type DeletionBlocker = { kind: DeletionBlockerKind; bookingId: string; listingTitle: string; state: BookingState };
+export type DeletionCheck = { canDelete: boolean; blockers: DeletionBlocker[] };
+
+// ---- Blocking and reporting (ROUTES.md "Users: blocking and reporting") ----
+
+export type BlockedUser = { user: { id: string; displayName: string }; createdAt: string };
+
+export type UserReportReason = "harassment" | "spam" | "scam" | "inappropriate" | "other";
+export type ListingReportReason = "prohibited_item" | "misleading" | "offensive" | "scam" | "other";
+export type ReportReceipt = { id: string; status: "open"; createdAt: string };
+/** Filter for the admin report lists: `closed` = every non-open status. */
+export type ReportFilter = "open" | "closed";
+
+export type UserReport = {
+  id: string;
+  societyId: string;
+  status: "open" | "reviewed" | "dismissed";
+  reason: UserReportReason;
+  details: string | null;
+  reporter: PartyInfo;
+  reported: PartyInfo;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+};
+
+export type ListingReport = {
+  id: string;
+  societyId: string;
+  status: "open" | "dismissed" | "actioned";
+  reason: ListingReportReason;
+  details: string | null;
+  reporter: PartyInfo;
+  listing: { id: string; title: string; status: ListingStatus; coverUrl: string | null; owner: PartyInfo };
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+};
 
 export type MessageReportStatus = "open" | "reviewed";
 

@@ -17,6 +17,7 @@ import {
 import { notifyNewMessage } from "../chat/push.js";
 import * as store from "../chat/store.js";
 import { approvedMembership, isSocietyAdmin, requireSocietyAdmin, sharesUnitWithParty } from "../lib/authz.js";
+import * as blocks from "../lib/blocks.js";
 import { DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
 import { notifySocietyAdmins } from "../lib/notify.js";
 import { clientKey, registerRateLimit } from "../plugins/rateLimit.js";
@@ -65,6 +66,7 @@ function participantSide(role: Role): store.Side {
 
 async function sendAllowed(c: store.ConversationRow, role: Role, bookings: store.BookingBetween[], userId: string, listingStatus?: string) {
   if (role === "admin") return false;
+  if (await blocks.blockedEitherWay(c.ownerId, c.borrowerId)) return false;
   const status = listingStatus ?? (await store.findListing(c.listingId))?.status ?? "archived";
   const member = Boolean(await approvedMembership(userId, c.societyId));
   return canSend({ role, listingStatus: status, senderApprovedMember: member, bookings, now: Date.now() });
@@ -72,11 +74,13 @@ async function sendAllowed(c: store.ConversationRow, role: Role, bookings: store
 
 async function conversationView(c: store.ConversationRow, role: Role, bookings: store.BookingBetween[], userId: string) {
   const l = await store.findListing(c.listingId);
-  const [parties, cover, unread, writable] = await Promise.all([
+  const other = c.ownerId === userId ? c.borrowerId : c.ownerId;
+  const [parties, cover, unread, writable, blockedByMe] = await Promise.all([
     store.partyInfos(c.societyId, [c.ownerId, c.borrowerId]),
     l ? store.coverUrl(l) : Promise.resolve(null),
     role === "admin" ? Promise.resolve(0) : store.unreadFor(c.id, userId),
     sendAllowed(c, role, bookings, userId, l?.status ?? "archived"),
+    role === "admin" ? Promise.resolve(false) : blocks.hasBlocked(userId, other),
   ]);
   return {
     id: c.id,
@@ -86,6 +90,7 @@ async function conversationView(c: store.ConversationRow, role: Role, bookings: 
     borrower: parties.get(c.borrowerId)!,
     myRole: role,
     canSend: writable,
+    blockedByMe,
     unreadCount: unread,
     activeBookingId: activeBookingId(bookings),
     bookings: bookings.map((b) => ({
@@ -156,7 +161,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const existing = await store.findConversationFor(l.id, me);
       if (!existing) {
         if (!(await approvedMembership(me, l.societyId))) throw notFound();
-        if (l.status === "archived") throw notFound();
+        if (l.status === "archived" || l.status === "removed") throw notFound();
+        if (await blocks.blockedEitherWay(me, l.ownerId)) throw forbidden("blocked");
       }
       const { row, created } = existing ? { row: existing, created: false } : await store.getOrCreateConversation(l, me);
       const bookings = await store.bookingsBetween(row.listingId, row.borrowerId);
@@ -177,6 +183,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
       if (!b || (b.lenderId !== me && b.borrowerId !== me)) throw notFound();
       const l = await store.findListing(b.listingId);
       if (!l) throw notFound();
+      if (!(await store.findConversationFor(l.id, b.borrowerId)) && (await blocks.blockedEitherWay(b.lenderId, b.borrowerId))) {
+        throw forbidden("blocked");
+      }
       const { row, created } = await store.getOrCreateConversation(l, b.borrowerId);
       const bookings = await store.bookingsBetween(row.listingId, row.borrowerId);
       const role: Role = row.ownerId === me ? "owner" : "borrower";
@@ -273,6 +282,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const side = participantSide(role);
       const parsed = messageBody.safeParse(req.body.body);
       if (!parsed.success) throw invalid(parsed.error.issues[0]?.message ?? "invalid message");
+      if (await blocks.blockedEitherWay(c.ownerId, c.borrowerId)) throw forbidden("blocked");
       if (!(await sendAllowed(c, role, bookings, me))) throw new DomainError("CONFLICT", "conversation_closed");
       const m = await store.insertMessage(c.id, me, side, parsed.data);
       // Fire-and-forget: a push failure (even a synchronous throw) never touches the 201.
@@ -329,7 +339,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         c.societyId,
         "A chat message was reported",
         "A resident reported a chat message. Review it in the society console.",
-        `/admin/${c.societyId}/message-reports`,
+        `/admin/${c.societyId}/reports`,
       );
       return reply.code(201).send({ id: r.id, messageId: r.messageId, status: r.status, createdAt: r.createdAt.toISOString() });
     },

@@ -14,9 +14,18 @@ import type {
   ApproveAdminRequestInput,
   AuthResponse,
   Booking,
+  BlockedUser,
   BookingDetail,
   BookingState,
   BusyRange,
+  DeletionBlocker,
+  DeletionCheck,
+  ListingReport,
+  ListingReportReason,
+  ReportFilter,
+  ReportReceipt,
+  UserReport,
+  UserReportReason,
   CategoryPreset,
   ChecklistAnswer,
   Conversation,
@@ -62,6 +71,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly code?: string,
+    /** The full error body, for routes that add fields (e.g. `blockers` on POST /me/delete). */
+    readonly body?: Record<string, unknown> | null,
   ) {
     super(message);
   }
@@ -127,7 +138,16 @@ const MESSAGE_COPY: Record<string, string> = {
   participants_only: "Only the lender and borrower can do that. Admins can read this chat but not post in it.",
   cannot_message_own_listing: "This is your own listing. Neighbours who want to borrow it can message you.",
   cannot_report_own_message: "You can only report the other person's messages.",
-  already_reported: "You've already reported this message. Your society admin will look at it.",
+  already_reported: "You've already reported this. Your society admin will look at it.",
+  // Blocking, reporting, takedown and account deletion (ROUTES.md).
+  blocked: "You can't do that. One of you has blocked the other.",
+  cannot_block_self: "You can't block yourself.",
+  cannot_report_self: "You can't report yourself.",
+  cannot_report_own_listing: "This is your own listing.",
+  listing_removed: "A society admin removed this listing. It can't be edited or put back up.",
+  wrong_password: "That password is wrong. Try again.",
+  account_has_open_obligations: "Finish the bookings listed below first. Then you can delete your account.",
+  account_deleted: "This account has been deleted.",
   invalid_cursor: "This chat changed while you were looking. Refresh the page.",
   rate_limited: "You're doing that too often. Wait a minute and try again.",
 };
@@ -202,8 +222,8 @@ function refreshTokens(): Promise<string | null> {
 }
 
 async function toError(res: Response): Promise<ApiError> {
-  const body = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
-  return new ApiError(res.status, body?.error ?? "request_failed", body?.code);
+  const body = (await res.json().catch(() => null)) as ({ error?: string; code?: string } & Record<string, unknown>) | null;
+  return new ApiError(res.status, body?.error ?? "request_failed", body?.code, body);
 }
 
 type Opts = { method?: string; body?: unknown; auth?: boolean };
@@ -537,6 +557,41 @@ export const markConversationRead = (id: string, upToMessageId?: string) =>
 /** Only the other participant's messages; once per message. */
 export const reportMessage = (messageId: string, reason: string) =>
   call<MessageReportReceipt>(`/messages/${enc(messageId)}/report`, { method: "POST", body: { reason } });
+
+// ---- account deletion ----
+
+/** Preflight: what still blocks deletion. */
+export const getDeletionCheck = () => call<DeletionCheck>("/me/deletion");
+/** → 204. 403 `wrong_password`; 409 `account_has_open_obligations` with `blockers` (see deletionBlockers). */
+export const deleteAccount = (password: string) => call<void>("/me/delete", { method: "POST", body: { password } });
+/** The `blockers` a 409 from POST /me/delete carries, or null. */
+export function deletionBlockers(e: unknown): DeletionBlocker[] | null {
+  if (!(e instanceof ApiError) || e.status !== 409) return null;
+  const b = e.body?.blockers;
+  return Array.isArray(b) ? (b as DeletionBlocker[]) : null;
+}
+
+// ---- blocking and reporting ----
+
+export const blockUser = (userId: string) => call<BlockedUser>(`/users/${enc(userId)}/block`, { method: "POST" });
+export const unblockUser = (userId: string) => call<void>(`/users/${enc(userId)}/block`, { method: "DELETE" });
+export const myBlocks = () => call<BlockedUser[]>("/me/blocks");
+export const reportUser = (userId: string, b: { reason: UserReportReason; details?: string }) =>
+  call<ReportReceipt>(`/users/${enc(userId)}/report`, { method: "POST", body: b });
+export const reportListing = (listingId: string, b: { reason: ListingReportReason; details?: string }) =>
+  call<ReportReceipt>(`/listings/${enc(listingId)}/report`, { method: "POST", body: b });
+
+export const adminUserReports = (societyId: string, status: ReportFilter = "open") =>
+  call<UserReport[]>(`/admin/societies/${enc(societyId)}/user-reports${qs({ status })}`);
+export const reviewUserReport = (id: string, b: { decision: "reviewed" | "dismissed"; note?: string }) =>
+  call<UserReport>(`/admin/user-reports/${enc(id)}/review`, { method: "POST", body: b });
+export const adminListingReports = (societyId: string, status: ReportFilter = "open") =>
+  call<ListingReport[]>(`/admin/societies/${enc(societyId)}/listing-reports${qs({ status })}`);
+export const dismissListingReport = (id: string, note?: string) =>
+  call<ListingReport>(`/admin/listing-reports/${enc(id)}/dismiss`, { method: "POST", body: note ? { note } : {} });
+/** Admin takedown: status `removed`, note 5–1000 (shown to the owner). */
+export const removeListing = (listingId: string, note: string) =>
+  call<Listing>(`/admin/listings/${enc(listingId)}/remove`, { method: "POST", body: { note } });
 
 export const adminMessageReports = (societyId: string, status: MessageReportStatus = "open") =>
   call<MessageReport[]>(`/admin/societies/${enc(societyId)}/message-reports${qs({ status })}`);

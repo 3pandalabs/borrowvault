@@ -2,6 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import type {
   AdminRequest,
   AuthResponse,
+  BlockedUser,
   Booking,
   BookingDetail,
   BusyRange,
@@ -9,6 +10,7 @@ import type {
   ChecklistAnswer,
   Conversation,
   ConversationSummary,
+  DeletionCheck,
   DisputeCategory,
   Geo,
   Inspection,
@@ -17,6 +19,7 @@ import type {
   ListingInput,
   ListingKind,
   ListingPatch,
+  ListingReportReason,
   ListingSummary,
   Me,
   MediaMime,
@@ -30,10 +33,12 @@ import type {
   PricingUnit,
   Rating,
   RatingInput,
+  ReportReceipt,
   SocietySearchResult,
   Tower,
   UnreadCounts,
   User,
+  UserReportReason,
 } from "./types";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -261,6 +266,42 @@ export const getMe = () => get<Me>("/me");
 export const updateMe = (body: { displayName?: string; phone?: string; upiVpa?: string; chatPushEnabled?: boolean }) =>
   patch<{ user: User }>("/me", body);
 
+// ---------------- Account deletion ----------------
+
+/** Preflight: what must be finished before the account can be deleted. */
+export const getDeletionCheck = () => get<DeletionCheck>("/me/deletion");
+/** 204. 403 wrong_password; 409 account_has_open_obligations (re-check with getDeletionCheck). */
+export const deleteAccount = (password: string) => post<void>("/me/delete", { password });
+
+// ---------------- Blocking & reporting users ----------------
+
+const u = (id: string) => `/users/${encodeURIComponent(id)}`;
+export const blockUser = (id: string) => post<BlockedUser>(`${u(id)}/block`);
+export const unblockUser = (id: string) => request<void>(`${u(id)}/block`, { method: "DELETE" });
+export const listBlocks = () => get<BlockedUser[]>("/me/blocks");
+export const reportUser = (id: string, reason: UserReportReason, details?: string) =>
+  post<ReportReceipt>(`${u(id)}/report`, details ? { reason, details } : { reason });
+
+/** Copy for block/report errors (the shared friendlyError reads 409 as a booking conflict). */
+export function safetyError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.error) {
+      case "already_reported":
+        return "You already reported this. An admin will look at it.";
+      case "cannot_block_self":
+        return "You can't block yourself.";
+      case "cannot_report_self":
+        return "You can't report yourself.";
+      case "cannot_report_own_listing":
+        return "This is your own listing.";
+      case "rate_limited":
+        return "You're going too fast. Please wait a moment and try again.";
+    }
+    if (err.status === 404) return "This person or listing isn't available any more.";
+  }
+  return friendlyError(err);
+}
+
 // ---------------- Push tokens ----------------
 
 export const registerPushToken = (token: string, platform: "ios" | "android") =>
@@ -311,6 +352,8 @@ export const getListing = (id: string) => get<Listing>(`/listings/${encodeURICom
 export const createListing = (body: ListingInput) => post<Listing>("/listings", body);
 export const updateListing = (id: string, body: ListingPatch) =>
   patch<Listing>(`/listings/${encodeURIComponent(id)}`, body);
+export const reportListing = (id: string, reason: ListingReportReason, details?: string) =>
+  post<ReportReceipt>(`/listings/${encodeURIComponent(id)}/report`, details ? { reason, details } : { reason });
 export const getAvailability = (id: string, from: string, to: string) =>
   get<BusyRange[]>(`/listings/${encodeURIComponent(id)}/availability${qs({ from, to })}`);
 
@@ -399,6 +442,8 @@ export function chatError(err: unknown): string {
         return "Type a message first.";
       case "message_too_long":
         return "Messages can be at most 2,000 characters.";
+      case "blocked":
+        return "You can't message each other because one of you blocked the other.";
       case "conversation_closed":
         return "This chat is read-only now, so you can't send new messages.";
       case "cannot_message_own_listing":
@@ -425,6 +470,8 @@ export function chatError(err: unknown): string {
 
 export function friendlyError(err: unknown): string {
   if (err instanceof ApiError) {
+    if (err.error === "listing_removed") return "A society admin removed this listing. It can't be changed or put back.";
+    if (err.error === "wrong_password") return "That password isn't right.";
     switch (err.code) {
       case "OVERLAP":
         return "Those dates are already booked. Please pick another slot.";
@@ -461,6 +508,9 @@ export function friendlyError(err: unknown): string {
 
 /** POST /bookings → 403 while the user owes an award or has trust < 2.0. */
 export function bookingRequestError(err: unknown): string {
+  if (err instanceof ApiError && err.error === "blocked") {
+    return "You can't book from this person because one of you blocked the other.";
+  }
   if (err instanceof ApiError && err.status === 403) {
     const detail = err.code === "FORBIDDEN" && err.error ? ` (${err.error})` : "";
     return `You can't borrow right now: settle any unpaid dispute award first, or ask your society admin to review your account if your trust score is below 2.0.${detail}`;

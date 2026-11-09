@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowLeft, Flag, Loader2, Lock, Send, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Ban, Flag, Loader2, Lock, Send, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatNotice, codePoints, Cover, MESSAGE_MAX, MessageBubble, ReportDialog } from "@/components/chat";
+import { BlockButton, ReportUserDialog } from "@/components/safety";
 import { ErrorText, LoadError, Loading, Panel, StateBadge, TrustBadge } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -187,6 +188,10 @@ function Chat({ c, reload }: { c: Conversation; reload: () => void }) {
   const t = useThread(c.id);
   const [reporting, setReporting] = useState<Message | null>(null);
   const [reported, setReported] = useState<Set<string>>(() => new Set());
+  const [reportingUser, setReportingUser] = useState(false);
+  const [userReported, setUserReported] = useState(false);
+  // Set when a send comes back 403 `blocked` (the other side blocked us).
+  const [blockedByThem, setBlockedByThem] = useState(false);
 
   // Mark read when the newest message we hold is from the other side and the
   // tab is visible (again on becoming visible). Admins can't mark read.
@@ -241,7 +246,9 @@ function Chat({ c, reload }: { c: Conversation; reload: () => void }) {
     } catch (e) {
       // The window closed while the chat was open: refetch so the composer
       // gives way to the read-only explanation.
-      if (e instanceof api.ApiError && (e.message === "conversation_closed" || e.message === "participants_only")) reload();
+      if (e instanceof api.ApiError && e.message === "blocked") setBlockedByThem(true);
+      if (e instanceof api.ApiError && (e.message === "conversation_closed" || e.message === "participants_only" || e.message === "blocked"))
+        reload();
       throw e;
     }
   };
@@ -305,6 +312,20 @@ function Chat({ c, reload }: { c: Conversation; reload: () => void }) {
             )}
           </div>
         </div>
+        {!isAdmin ? (
+          <div className="mt-3 flex flex-wrap items-start gap-2 border-t border-line pt-3">
+            <BlockButton userId={other.id} name={other.displayName} blocked={c.blockedByMe} onChanged={() => reload()} />
+            {userReported ? (
+              <span className="inline-flex h-9 items-center gap-1 text-sm text-amber-700">
+                <Flag className="size-4" /> Reported
+              </span>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => setReportingUser(true)}>
+                <Flag /> Report {other.displayName}
+              </Button>
+            )}
+          </div>
+        ) : null}
       </Panel>
 
       {isAdmin ? (
@@ -395,20 +416,42 @@ function Chat({ c, reload }: { c: Conversation; reload: () => void }) {
             </p>
           ) : c.canSend ? (
             <Composer onSend={send} disabled={!t.loaded} />
+          ) : c.blockedByMe || blockedByThem ? (
+            <p className="flex items-start gap-2 text-sm text-fg-muted">
+              <Ban className="mt-0.5 size-4 shrink-0" />
+              <span>
+                {c.blockedByMe
+                  ? `You blocked ${other.displayName}, so you can't message each other. Unblock them to chat again.`
+                  : "You can't message each other. One of you blocked the other."}{" "}
+                Bookings you already have carry on as normal.
+              </span>
+            </p>
           ) : (
             <p className="flex items-start gap-2 text-sm text-fg-muted">
               <Lock className="mt-0.5 size-4 shrink-0" />
               <span>
                 This chat is read-only now.{" "}
-                {c.listing.status === "archived"
-                  ? "The listing has been archived and there's been no booking activity in the last 7 days."
-                  : "There's been no booking activity in the last 7 days and your membership in this society isn't approved any more."}{" "}
+                {c.listing.status === "archived" || c.listing.status === "removed"
+                  ? `The listing has been ${c.listing.status === "removed" ? "removed" : "archived"} and there's been no booking activity in the last 7 days.`
+                  : "There's been no booking activity in the last 7 days and your membership in this society isn't approved any more. Or one of you has blocked the other."}{" "}
                 You can still read everything here.
               </span>
             </p>
           )}
         </div>
       </Panel>
+
+      {reportingUser ? (
+        <ReportUserDialog
+          userId={other.id}
+          name={other.displayName}
+          onClose={() => setReportingUser(false)}
+          onDone={() => {
+            setReportingUser(false);
+            setUserReported(true);
+          }}
+        />
+      ) : null}
 
       {reporting ? (
         <ReportDialog

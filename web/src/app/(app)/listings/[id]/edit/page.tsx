@@ -30,6 +30,20 @@ export default function EditListingPage() {
     );
   }
 
+  if (listing.data.status === "removed") {
+    return (
+      <EmptyState
+        title="A society admin removed this listing"
+        body={`It can't be edited or put back up.${listing.data.removal?.note ? ` Their note: ${listing.data.removal.note}` : ""}`}
+        action={
+          <Link href={`/listings/${id}`}>
+            <Button size="sm">Back to listing</Button>
+          </Link>
+        }
+      />
+    );
+  }
+
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Edit listing" subtitle={listing.data.title} />

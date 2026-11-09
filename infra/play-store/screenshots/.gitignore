@@ -1,0 +1,2 @@
+# Raw captures stay local (they may show more than you meant to). Commit only framed/.
+raw/

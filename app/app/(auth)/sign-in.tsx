@@ -39,7 +39,7 @@ export default function SignIn() {
   return (
     <Screen edges={["top", "bottom"]}>
       <View style={{ alignItems: "center", marginTop: 32, marginBottom: 8, gap: 8 }}>
-        <Image source={require("../../assets/icon.png")} style={{ width: 72, height: 72 }} />
+        <Image source={require("../../assets/icon.png")} style={{ width: 72, height: 72, borderRadius: 16 }} />
         <H1>BorrowVault</H1>
         <P muted>Borrow and lend within your society</P>
       </View>

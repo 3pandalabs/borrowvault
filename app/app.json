@@ -15,7 +15,7 @@
     "android": {
       "package": "com.threepanda.borrowvault",
       "adaptiveIcon": {
-        "backgroundColor": "#2f7a4f",
+        "backgroundColor": "#161A22",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png"
       },
@@ -60,7 +60,8 @@
       [
         "expo-notifications",
         {
-          "color": "#2f7a4f",
+          "icon": "./assets/notification-icon.png",
+          "color": "#9B5CF6",
           "defaultChannel": "default"
         }
       ],

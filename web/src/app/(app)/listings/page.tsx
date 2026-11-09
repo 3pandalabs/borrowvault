@@ -47,7 +47,7 @@ function Browse() {
     <>
       <PageHeader
         title="Browse"
-        subtitle={`Things and skills offered by verified neighbours in ${active!.societyName}`}
+        subtitle={`Things and skills offered by verified neighbours in ${active!.societyName}${active!.societyTier === "pilot" ? " · Pilot society" : ""}`}
         actions={
           <Link href="/listings/new">
             <Button>

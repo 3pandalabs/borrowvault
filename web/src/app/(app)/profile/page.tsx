@@ -111,8 +111,8 @@ export default function ProfilePage() {
           Society admin
         </PanelTitle>
         <p className="mb-3 text-sm text-fg-muted">
-          On your society&apos;s RWA or committee? Register your society, or apply to be one of its admins. BorrowVault
-          verifies every admin against committee documents.
+          Register your society, or apply to be one of its admins. Every admin uploads their own ID proof, and BorrowVault
+          checks it. Admins can also nominate you as a co-admin.
         </p>
         <ul className="divide-y divide-line rounded-xl border border-line">
           <li>

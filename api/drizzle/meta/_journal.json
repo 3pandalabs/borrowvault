@@ -43,6 +43,13 @@
       "when": 1793988317682,
       "tag": "0005_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794242581335,
+      "tag": "0006_pilot_and_nominations",
+      "breakpoints": true
     }
   ]
 }

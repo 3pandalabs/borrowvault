@@ -20,6 +20,7 @@ function tokenMatches(presented: string, expected: string): boolean {
 type CountsRow = {
   users: number;
   live_societies: number;
+  pilot_societies: number;
   approved_members: number;
   pending_members: number;
   admin_requests_pending: number;
@@ -47,6 +48,7 @@ export async function metricsRoutes(app: FastifyInstance) {
       select
         (select count(*) from users)::int as users,
         (select count(*) from societies where status = 'live')::int as live_societies,
+        (select count(*) from societies where status = 'live' and tier = 'pilot')::int as pilot_societies,
         (select count(*) from memberships where status = 'approved')::int as approved_members,
         (select count(*) from memberships where status = 'pending')::int as pending_members,
         (select count(*) from admin_requests where status = 'pending')::int as admin_requests_pending,
@@ -77,6 +79,7 @@ export async function metricsRoutes(app: FastifyInstance) {
       counts: {
         users: c.users,
         liveSocieties: c.live_societies,
+        pilotSocieties: c.pilot_societies,
         approvedMembers: c.approved_members,
         pendingMembers: c.pending_members,
         adminRequestsPending: c.admin_requests_pending,

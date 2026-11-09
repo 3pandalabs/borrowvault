@@ -8,12 +8,12 @@ import { formatIST } from "@/lib/format";
 import { useAction, useAsync } from "@/lib/hooks";
 import type { AdminRequestStatus, PlatformAdminRequest } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { DOC_GUIDE, DocLink, KIND_LABEL, lengthError, mapsUrl, RequestStatusBadge, SocietyAdminsList } from "./adminRequests";
+import { DocLink, KIND_LABEL, lengthError, mapsUrl, RequestStatusBadge, SocietyAdminsList } from "./adminRequests";
 import { EmptyState, ErrorText, Field, LoadError, Loading, Panel, PanelTitle } from "./common";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 
-const STATUS_TABS: AdminRequestStatus[] = ["pending", "approved", "rejected", "withdrawn"];
+const STATUS_TABS: AdminRequestStatus[] = ["pending", "nominated", "approved", "rejected", "withdrawn", "declined", "cancelled"];
 // docUrls are presigned for 10 minutes; refetch a little before that.
 const DOC_URL_TTL_MS = 8 * 60 * 1000;
 
@@ -89,7 +89,14 @@ export function AdminRequestsQueue() {
                     <span className="block truncate font-medium">{r.societyName}</span>
                     <span className="block truncate text-sm text-fg-muted">
                       {KIND_LABEL[r.kind]} · {r.requester.displayName}
+                      {r.nominatedBy ? ` · nominated by ${r.nominatedBy.displayName}` : ""}
+                      {r.resultingTier === "pilot" ? " · becomes a pilot" : ""}
                     </span>
+                    {r.kind === "nominate_admin" && r.status === "pending" && r.autoApproveAt ? (
+                      <span className="block truncate text-xs text-amber-700">
+                        {`Auto-approves ${formatIST(r.autoApproveAt)}`}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="shrink-0 text-xs text-fg-muted">{formatIST(r.createdAt, { time: false })}</span>
                 </button>
@@ -180,7 +187,25 @@ function RequestReview({
   return (
     <Panel>
       <PanelTitle aside={<RequestStatusBadge status={r.status} />}>{r.societyName}</PanelTitle>
-      <p className="-mt-2 mb-4 text-sm text-fg-muted">{KIND_LABEL[r.kind]}</p>
+      <p className="-mt-2 mb-4 text-sm text-fg-muted">
+        {KIND_LABEL[r.kind]}
+        {r.nominatedBy ? ` · Nominated by ${r.nominatedBy.displayName}` : ""}
+      </p>
+      {r.resultingTier === "pilot" ? (
+        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">
+          Approving creates a pilot society: up to 50 members, values up to ₹5,000, and disputes ruled by BorrowVault. Mark
+          it verified later from the societies list.
+        </p>
+      ) : null}
+      {r.kind === "nominate_admin" ? (
+        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">
+          {r.status === "pending" && r.autoApproveAt
+            ? `Auto-approves on ${formatIST(r.autoApproveAt)} unless you reject it first. You can also approve it now.`
+            : r.status === "nominated"
+              ? "Waiting for the nominee to accept and upload their ID proof."
+              : "A society admin vouched for this person instead of an authorisation letter."}
+        </p>
+      ) : null}
 
       <h3 className="mb-1 text-sm font-medium">Requester</h3>
       <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -190,7 +215,7 @@ function RequestReview({
         <dd className="break-all">{r.requester.email}</dd>
         <dt className="text-fg-muted">Phone</dt>
         <dd>{r.requester.phone}</dd>
-        <dt className="text-fg-muted">Committee role</dt>
+        <dt className="text-fg-muted">Role</dt>
         <dd>{r.committeeRole}</dd>
         <dt className="text-fg-muted">Sent</dt>
         <dd>{formatIST(r.createdAt)}</dd>
@@ -230,7 +255,7 @@ function RequestReview({
         <>
           <h3 className="mb-1 text-sm font-medium">Society</h3>
           <p className="mb-4 text-sm">
-            {r.society.name} · {r.society.city}{" "}
+            {`${r.society.name} · ${r.society.city} · ${r.society.tier === "pilot" ? "Pilot" : "Verified"} · ${r.society.memberCount} members`}{" "}
             <Link href={`/admin/${r.society.id}?tab=admins`} className="text-accent hover:underline">
               Current admins
             </Link>
@@ -255,11 +280,17 @@ function RequestReview({
 
       <h3 className="mb-2 text-sm font-medium">Documents</h3>
       <div className="mb-4 flex flex-wrap gap-2">
-        {r.kind === "new_society" ? (
-          <DocLink label={DOC_GUIDE.rwaRegistration.label} getUrl={() => docUrl("rwaRegistration")} />
+        {r.docUrls.idProof ? <DocLink label="ID proof" getUrl={() => docUrl("idProof")} /> : null}
+        {r.docUrls.residenceProof ? <DocLink label="Proof of residence" getUrl={() => docUrl("residenceProof")} /> : null}
+        {r.docUrls.rwaRegistration ? (
+          <DocLink label="RWA certificate (older request)" getUrl={() => docUrl("rwaRegistration")} />
         ) : null}
-        <DocLink label={DOC_GUIDE.authorization.label} getUrl={() => docUrl("authorization")} />
-        <DocLink label={DOC_GUIDE.idProof.label} getUrl={() => docUrl("idProof")} />
+        {r.docUrls.authorization ? (
+          <DocLink label="Authorisation letter (older request)" getUrl={() => docUrl("authorization")} />
+        ) : null}
+        {!Object.keys(r.docUrls).length ? (
+          <p className="text-sm text-fg-muted">No documents yet. The nominee uploads their ID proof when they accept.</p>
+        ) : null}
       </div>
 
       {r.reviewNote ? (

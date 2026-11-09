@@ -6,14 +6,25 @@ import { useLoader } from "../src/hooks/useAsync";
 import { useAuth } from "../src/hooks/useAuth";
 import { adminRequestError, listMyAdminRequests, withdrawAdminRequest } from "../src/lib/api";
 import { formatDateTime } from "../src/lib/format";
+import { openWeb } from "../src/lib/openWeb";
+import { myAdminRequestsUrl } from "../src/lib/web";
 import { colors } from "../src/lib/theme";
 import type { AdminRequest, AdminRequestStatus } from "../src/lib/types";
 
 const STATUS: Record<AdminRequestStatus, { label: string; tone?: "good" | "warn" | "bad" }> = {
+  nominated: { label: "Waiting for you", tone: "warn" },
   pending: { label: "Under review", tone: "warn" },
   approved: { label: "Approved", tone: "good" },
   rejected: { label: "Not approved", tone: "bad" },
   withdrawn: { label: "Withdrawn" },
+  declined: { label: "Declined" },
+  cancelled: { label: "Cancelled" },
+};
+
+const KIND: Record<AdminRequest["kind"], string> = {
+  new_society: "Register a new society",
+  join_admin: "Become an admin",
+  nominate_admin: "Co-admin nomination",
 };
 
 export default function MyAdminRequests() {
@@ -27,8 +38,8 @@ export default function MyAdminRequests() {
       }}>
       <Stack.Screen options={{ title: "My admin requests" }} />
       <P muted>
-        The BorrowVault team checks every admin request against its documents. Approval usually takes a couple of
-        working days, and we email you either way.
+        Your admin requests and co-admin nominations. Every admin uploads their own ID proof, and the BorrowVault team
+        checks it. We email you either way.
       </P>
       <ErrorText>{list.error}</ErrorText>
       {!list.data && list.loading ? <Loading /> : null}
@@ -57,7 +68,11 @@ function RequestCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const s = STATUS[r.status];
+  const s = STATUS[r.status] ?? { label: r.status };
+
+  async function answer() {
+    setError(await openWeb(myAdminRequestsUrl()));
+  }
 
   async function withdraw() {
     setBusy(true);
@@ -78,8 +93,18 @@ function RequestCard({
         <Chip label={s.label} tone={s.tone} />
       </View>
       <P muted>
-        {r.kind === "new_society" ? "Register a new society" : "Become an admin"} · {r.committeeRole}
+        {`${KIND[r.kind]} · ${r.committeeRole}`}
+        {r.nominatedBy ? ` · nominated by ${r.nominatedBy.displayName}` : ""}
       </P>
+      {r.kind === "nominate_admin" && r.status === "nominated" ? (
+        <>
+          <P>To accept, upload your ID proof on the BorrowVault website. You can also decline there.</P>
+          <Button title="Answer on the website" icon="open-outline" onPress={() => void answer()} />
+        </>
+      ) : null}
+      {r.kind === "nominate_admin" && r.status === "pending" && r.autoApproveAt ? (
+        <P muted>{`You become an admin on ${formatDateTime(r.autoApproveAt)}, unless BorrowVault rejects it first.`}</P>
+      ) : null}
       {r.proposedSociety ? (
         <KV k="Your flat" v={`${r.proposedSociety.towerName}-${r.proposedSociety.flatNo}, ${r.proposedSociety.city}`} />
       ) : null}
@@ -99,7 +124,7 @@ function RequestCard({
         </View>
       ) : null}
       {r.status === "rejected" ? (
-        <P muted>You can send a new request with clearer documents from the website.</P>
+        <P muted>You can send a new request from the website.</P>
       ) : null}
       {r.status === "approved" ? (
         <P muted>You&apos;re now a society admin. Manage your society from the BorrowVault website.</P>

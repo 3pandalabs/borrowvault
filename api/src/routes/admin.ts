@@ -8,9 +8,11 @@ import { bookingSummaries, disputeView } from "../booking/view.js";
 import { db } from "../db/index.js";
 import { bookings, disputes, inviteCodes, memberships, societies, towers, users } from "../db/schema.js";
 import { isPlatformAdmin, requireSocietyAdmin } from "../lib/authz.js";
-import { conflict, forbidden, invalid, notFound } from "../lib/errors.js";
+import { conflict, DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
 import { societyAdminMayReview } from "../lib/adminRequests.js";
-import { notifyUsers } from "../lib/notify.js";
+import { notifySocietyAdmins, notifyUsers } from "../lib/notify.js";
+import { assertRoomForMember, isPilot } from "../lib/pilot.js";
+import { approvedMemberCount, lockSocietyTier, memberCountSql } from "../lib/societyTier.js";
 import { membershipBase, membershipById, toMembershipView } from "../lib/users.js";
 
 const uuid = z.string().uuid();
@@ -24,13 +26,20 @@ function inviteCode(): string {
   return s;
 }
 
-async function societyOr404(id: string) {
-  const [s] = await db.select().from(societies).where(eq(societies.id, id)).limit(1);
+type SocietyRow = typeof societies.$inferSelect & { memberCount: number };
+
+async function societyOr404(id: string): Promise<SocietyRow> {
+  const [s] = await db
+    .select({ s: societies, memberCount: memberCountSql })
+    .from(societies)
+    .where(eq(societies.id, id))
+    .limit(1);
   if (!s) throw notFound();
-  return s;
+  return { ...s.s, memberCount: Number(s.memberCount) };
 }
 
-function societyView(s: typeof societies.$inferSelect) {
+/** `Society` (api/ROUTES.md). */
+function societyView(s: SocietyRow) {
   return {
     id: s.id,
     name: s.name,
@@ -40,6 +49,10 @@ function societyView(s: typeof societies.$inferSelect) {
     radiusM: s.radiusM,
     status: s.status,
     settings: { depositMode: s.settings?.depositMode ?? "declared" },
+    tier: s.tier,
+    verifiedAt: s.verifiedAt ? s.verifiedAt.toISOString() : null,
+    memberCount: s.memberCount,
+    createdAt: s.createdAt.toISOString(),
   };
 }
 
@@ -113,16 +126,23 @@ export async function adminRoutes(fastify: FastifyInstance) {
     if (to !== "approved" && !societyAdminMayReview(m.role, platform)) throw forbidden("admin_membership_platform_only");
     const from = to === "revoked" ? ["approved"] : ["pending"];
     if (!from.includes(m.status)) throw conflict(`membership is ${m.status}`);
-    const updated = await db
-      .update(memberships)
-      .set({
-        status: to,
-        reviewNote: note,
-        ...(to === "approved" ? { approvedBy: adminId, approvedAt: new Date() } : {}),
-      })
-      .where(and(eq(memberships.id, m.id), eq(memberships.status, m.status)))
-      .returning({ id: memberships.id });
-    if (!updated.length) throw conflict("membership changed, reload");
+    await db.transaction(async (tx) => {
+      if (to === "approved") {
+        // Pilot member cap. The society row lock serialises concurrent approvals.
+        const tier = await lockSocietyTier(tx, m.societyId);
+        if (isPilot(tier)) assertRoomForMember(tier, await approvedMemberCount(m.societyId, tx));
+      }
+      const updated = await tx
+        .update(memberships)
+        .set({
+          status: to,
+          reviewNote: note,
+          ...(to === "approved" ? { approvedBy: adminId, approvedAt: new Date() } : {}),
+        })
+        .where(and(eq(memberships.id, m.id), eq(memberships.status, m.status)))
+        .returning({ id: memberships.id });
+      if (!updated.length) throw conflict("membership changed, reload");
+    });
     await notifyUsers([m.userId], `Your BorrowVault membership was ${to}`, note ? `Note from the society admin: ${note}` : `Your membership was ${to}.`, "/");
     return membershipById(m.id);
   }
@@ -207,7 +227,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         })
         .where(eq(societies.id, s.id))
         .returning();
-      return societyView(u);
+      return societyView({ ...u, memberCount: s.memberCount });
     },
   );
 
@@ -243,8 +263,27 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   app.get("/platform/societies", { preHandler: requireAuth }, async (req) => {
     if (!(await isPlatformAdmin(req.userId!))) throw forbidden("platform_admin_required");
-    const rows = await db.select().from(societies).orderBy(desc(societies.createdAt));
-    return rows.map(societyView);
+    const rows = await db.select({ s: societies, memberCount: memberCountSql }).from(societies).orderBy(desc(societies.createdAt));
+    return rows.map((r) => societyView({ ...r.s, memberCount: Number(r.memberCount) }));
+  });
+
+  // Pilot → verified (lifts the pilot limits). There is no self-serve path.
+  app.post("/platform/societies/:id/verify", { preHandler: requireAuth, schema: { params: idParams } }, async (req) => {
+    if (!(await isPlatformAdmin(req.userId!))) throw forbidden("platform_admin_required");
+    const s = await societyOr404(req.params.id);
+    const [u] = await db
+      .update(societies)
+      .set({ tier: "verified", verifiedAt: new Date() })
+      .where(and(eq(societies.id, s.id), eq(societies.tier, "pilot")))
+      .returning();
+    if (!u) throw new DomainError("CONFLICT", "already_verified");
+    await notifySocietyAdmins(
+      s.id,
+      "Your society is now verified on BorrowVault",
+      `"${s.name}" is now a verified society. The pilot limits no longer apply: no member cap, no ₹5,000 value cap, and society admins can rule disputes.`,
+      `/admin/${s.id}`,
+    );
+    return societyView({ ...u, memberCount: s.memberCount });
   });
 
   app.post(
@@ -270,7 +309,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const s = await db.transaction(async (tx) => {
         const [s] = await tx
           .insert(societies)
-          .values({ name: b.name, city: b.city, centerLat: b.centerLat, centerLng: b.centerLng, radiusM: b.radiusM, status: "live" })
+          // Staff-created: they did the checks themselves, so verified from the start.
+          .values({
+            name: b.name,
+            city: b.city,
+            centerLat: b.centerLat,
+            centerLng: b.centerLng,
+            radiusM: b.radiusM,
+            status: "live",
+            tier: "verified",
+            verifiedAt: new Date(),
+          })
           .returning();
         await tx.insert(memberships).values({
           userId: admin.id,
@@ -285,7 +334,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
         return s;
       });
-      return reply.code(201).send(societyView(s));
+      return reply.code(201).send(societyView({ ...s, memberCount: 1 }));
     },
   );
 }

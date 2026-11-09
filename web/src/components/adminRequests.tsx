@@ -17,22 +17,47 @@ import { Input } from "./ui/input";
 export const ADMIN_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 export const ADMIN_DOC_MAX = 10 * 1024 * 1024;
 
-export type DocKind = "rwaRegistration" | "authorization" | "idProof";
+export type DocKind = "idProof" | "residenceProof";
 
 export const DOC_GUIDE: Record<DocKind, { label: string; hint: string }> = {
-  rwaRegistration: {
-    label: "RWA / society registration certificate",
-    hint: "The registration certificate of your Residents' Welfare Association, society or apartment owners' association.",
-  },
-  authorization: {
-    label: "Letter authorising you as admin",
-    hint: "A letter on the RWA letterhead, or a committee resolution, naming you as your society's BorrowVault admin. Signed by the president or secretary.",
-  },
   idProof: {
-    label: "Your ID or address proof",
-    hint: "Use a masked Aadhaar (only the last 4 digits visible) or a recent utility bill in your name. Please don't upload a full Aadhaar number.",
+    label: "Your ID proof",
+    hint: "A masked Aadhaar (only the last 4 digits visible), PAN card, passport or driving licence. Please don't upload a full Aadhaar number.",
+  },
+  residenceProof: {
+    label: "Proof that you live in the society",
+    hint: "A maintenance bill, rent agreement, allotment letter or electricity bill that shows your flat.",
   },
 };
+
+/** The pilot rules (api/ROUTES.md "Pilot societies"), as short sentences. */
+export const PILOT_LIMITS = [
+  "Up to 50 members, admins included.",
+  "Deposits and replacement values up to ₹5,000 per listing.",
+  "The BorrowVault team rules disputes, not the society admins.",
+] as const;
+
+export const PILOT_VALUE_CAP_PAISE = 500_000;
+
+/** Small "Pilot society" chip. */
+export function PilotBadge() {
+  return <Badge variant="muted">Pilot society</Badge>;
+}
+
+/** Pilot explanation for admins (society console, register page). */
+export function PilotLimits({ intro }: { intro?: string }) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">
+      <p className="font-medium">{intro ?? "This is a pilot society. Until BorrowVault verifies it:"}</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5">
+        {PILOT_LIMITS.map((l) => (
+          <li key={l}>{l}</li>
+        ))}
+      </ul>
+      <p className="mt-1">The BorrowVault team lifts these limits when it marks the society verified.</p>
+    </div>
+  );
+}
 
 /** One document slot: the picked file and, once uploaded, its key (reused on retry). */
 export type DocSlot = { file: File | null; key: string | null; error: string | null };
@@ -112,13 +137,17 @@ export function lengthError(label: string, value: string, min: number, max: numb
 export const KIND_LABEL: Record<AdminRequestKind, string> = {
   new_society: "Register a society",
   join_admin: "Become an admin",
+  nominate_admin: "Co-admin nomination",
 };
 
 const STATUS: Record<AdminRequestStatus, [string, BadgeVariant]> = {
+  nominated: ["Waiting for nominee", "warn"],
   pending: ["Under review", "warn"],
   approved: ["Approved", "good"],
   rejected: ["Not approved", "bad"],
   withdrawn: ["Withdrawn", "muted"],
+  declined: ["Declined", "muted"],
+  cancelled: ["Cancelled", "muted"],
 };
 
 export function RequestStatusBadge({ status }: { status: AdminRequestStatus }) {

@@ -100,11 +100,22 @@ export function errorMessage(e: unknown): string {
 // `error` rather than prose, so they get human copy here.
 const MESSAGE_COPY: Record<string, string> = {
   request_pending:
-    "You already have a request waiting for review. Withdraw it from My requests if you need to change something.",
-  already_admin: "You're already an admin of this society.",
-  not_pending: "This request has already been reviewed or withdrawn. Refresh to see where it is now.",
+    "There is already an open admin request or nomination for this person and society. Wait for it, or withdraw it from My requests.",
+  already_admin: "That person is already an admin of this society.",
+  not_pending: "This request has already been reviewed, withdrawn or cancelled. Refresh to see where it is now.",
   membership_not_active:
-    "The requester's membership in this society is no longer approved, so they can't be made an admin.",
+    "The membership in this society is no longer approved, so this person can't be made an admin.",
+  // Pilot societies and co-admin nominations (ROUTES.md).
+  society_full:
+    "This pilot society is full. Pilot societies can have up to 50 members, admins included, until BorrowVault verifies them.",
+  pilot_value_cap: "In a pilot society, the deposit and replacement value can be at most ₹5,000 each.",
+  pilot_platform_rules:
+    "In a pilot society, the BorrowVault team rules disputes. Society admins can't rule until the society is verified.",
+  already_verified: "This society is already verified.",
+  not_nominated: "This nomination is no longer waiting for your answer. Refresh to see where it is now.",
+  nominee_not_approved: "Only approved residents can be nominated. Approve their membership first.",
+  cannot_nominate_self: "You can't nominate yourself.",
+  nominator_not_admin: "The admin who made this nomination is no longer an admin of this society.",
   not_admin: "That person isn't an admin of this society any more. Refresh the list.",
   admin_membership_platform_only:
     "Only BorrowVault can reject or remove a society admin. Write to 3PandaLabs if an admin should step down.",
@@ -321,6 +332,24 @@ export const myAdminRequests = () => call<AdminRequest[]>("/admin-requests/mine"
 /** 409 `not_pending` if it isn't pending any more. */
 export const withdrawAdminRequest = (id: string) =>
   call<AdminRequest>(`/admin-requests/${enc(id)}/withdraw`, { method: "POST" });
+/** Nominee: upload ID proof (admin_doc) → pending, auto-approves 48 h later. 409 `not_nominated`. */
+export const acceptNomination = (id: string, b: { idProofKey: string; statement?: string }) =>
+  call<AdminRequest>(`/admin-requests/${enc(id)}/accept`, { method: "POST", body: b });
+/** Nominee says no. 409 `not_nominated`. */
+export const declineNomination = (id: string) =>
+  call<AdminRequest>(`/admin-requests/${enc(id)}/decline`, { method: "POST" });
+/** Nominator cancels while nominated/pending. 409 `not_pending`. */
+export const cancelNomination = (id: string) =>
+  call<AdminRequest>(`/admin-requests/${enc(id)}/cancel`, { method: "POST" });
+
+// ---- co-admin nominations (society admin) ----
+
+/** → 201 AdminRequest (nominate_admin, status `nominated`). */
+export const nominateCoAdmin = (societyId: string, b: { membershipId: string; committeeRole?: string }) =>
+  call<AdminRequest>(`/admin/societies/${enc(societyId)}/nominations`, { method: "POST", body: b });
+/** This society's nominations, newest first. */
+export const societyNominations = (societyId: string) =>
+  call<AdminRequest[]>(`/admin/societies/${enc(societyId)}/nominations`);
 
 // ---- platform admin ----
 
@@ -333,6 +362,9 @@ export const createSociety = (b: {
   adminUserEmail: string;
 }) => call<Society>("/platform/societies", { method: "POST", body: b });
 export const listPlatformSocieties = () => call<Society[]>("/platform/societies");
+/** Pilot → verified (lifts the pilot limits). 409 `already_verified`. */
+export const verifySociety = (societyId: string) =>
+  call<Society>(`/platform/societies/${enc(societyId)}/verify`, { method: "POST" });
 /** Default `pending` (oldest first); other statuses newest first. docUrls last 10 min. */
 export const listPlatformAdminRequests = (status?: AdminRequestStatus) =>
   call<PlatformAdminRequest[]>(`/platform/admin-requests${qs({ status })}`);

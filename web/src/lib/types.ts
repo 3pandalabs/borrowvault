@@ -23,6 +23,7 @@ export type Membership = {
   id: string;
   societyId: string;
   societyName: string;
+  societyTier: SocietyTier;
   towerName: string;
   flatNo: string;
   role: "resident" | "society_admin";
@@ -33,7 +34,10 @@ export type Membership = {
 
 export type Me = { user: User; memberships: Membership[] };
 
-export type SocietySearchResult = { id: string; name: string; city: string };
+export type SocietyTier = "pilot" | "verified";
+
+/** `full` = a pilot society at its member cap. */
+export type SocietySearchResult = { id: string; name: string; city: string; tier: SocietyTier; full: boolean };
 export type Tower = { id: string; name: string };
 
 export type AdminMembership = Membership & {
@@ -52,6 +56,11 @@ export type Society = {
   radiusM: number;
   settings: { depositMode: DepositMode };
   status: string;
+  tier: SocietyTier;
+  verifiedAt: string | null;
+  /** Approved memberships, admins included. */
+  memberCount: number;
+  createdAt: string;
 };
 
 export type SocietyPatch = {
@@ -77,8 +86,15 @@ export type SocietyAdmin = {
   since: string;
 };
 
-export type AdminRequestKind = "new_society" | "join_admin";
-export type AdminRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type AdminRequestKind = "new_society" | "join_admin" | "nominate_admin";
+export type AdminRequestStatus =
+  | "nominated"
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "withdrawn"
+  | "declined"
+  | "cancelled";
 
 export type ProposedSociety = {
   name: string;
@@ -105,7 +121,18 @@ export type AdminRequest = {
   proposedSociety: ProposedSociety | null;
   committeeRole: string;
   statement: string | null;
-  docs: { rwaRegistrationKey: string | null; authorizationKey: string; idProofKey: string };
+  docs: {
+    /** null only on a nomination the nominee hasn't accepted. */
+    idProofKey: string | null;
+    residenceProofKey: string | null;
+    /** Legacy, read-only. */
+    rwaRegistrationKey: string | null;
+    authorizationKey: string | null;
+  };
+  /** nominate_admin only. */
+  nominatedBy: { id: string; displayName: string } | null;
+  nomineeAcceptedAt: string | null;
+  autoApproveAt: string | null;
   reviewNote: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -114,9 +141,11 @@ export type AdminRequest = {
 
 export type PlatformAdminRequest = AdminRequest & {
   requester: { id: string; displayName: string; email: string; phone: string };
-  society: { id: string; name: string; city: string } | null;
-  /** Presigned GETs (10 min); rwaRegistration only for new_society. */
-  docUrls: { rwaRegistration?: string; authorization: string; idProof: string };
+  society: { id: string; name: string; city: string; tier: SocietyTier; memberCount: number } | null;
+  /** new_society: the tier approval creates. Other kinds: null. */
+  resultingTier: "pilot" | null;
+  /** Presigned GETs (10 min) for the docs present. */
+  docUrls: { idProof?: string; residenceProof?: string; rwaRegistration?: string; authorization?: string };
 };
 
 export type NewSocietyRequestInput = {
@@ -132,7 +161,7 @@ export type NewSocietyRequestInput = {
   occupancy: Occupancy;
   committeeRole: string;
   statement?: string;
-  docs: { rwaRegistrationKey: string; authorizationKey: string; idProofKey: string };
+  docs: { idProofKey: string; residenceProofKey: string };
 };
 
 export type JoinAdminRequestInput = {
@@ -140,7 +169,7 @@ export type JoinAdminRequestInput = {
   societyId: string;
   committeeRole: string;
   statement?: string;
-  docs: { authorizationKey: string; idProofKey: string };
+  docs: { idProofKey: string };
 };
 
 export type AdminRequestInput = NewSocietyRequestInput | JoinAdminRequestInput;

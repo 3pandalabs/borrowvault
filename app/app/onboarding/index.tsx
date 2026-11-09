@@ -65,14 +65,23 @@ export default function SocietySearch() {
       {results?.map((s) => (
         <Pressable
           key={s.id}
+          disabled={s.full}
           onPress={() => router.push({ pathname: "/onboarding/join", params: { societyId: s.id, name: s.name } })}
         >
-          <Card>
+          <Card style={s.full ? { opacity: 0.6 } : undefined}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
               <Ionicons name="business" size={24} color={colors.accent} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: colors.fg }}>{s.name}</Text>
-                <Text style={{ color: colors.fgMuted }}>{s.city}</Text>
+                <Text style={{ color: colors.fgMuted }}>
+                  {s.city}
+                  {s.tier === "pilot" ? " · Pilot society" : ""}
+                </Text>
+                {s.full ? (
+                  <Text style={{ color: colors.fgMuted, fontSize: 12 }}>
+                    Full for now. Pilot societies take up to 50 members until BorrowVault verifies them.
+                  </Text>
+                ) : null}
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.fgMuted} />
             </View>
@@ -82,8 +91,8 @@ export default function SocietySearch() {
       <Card>
         <P style={{ fontWeight: "700" }}>Society not listed?</P>
         <P muted>
-          If you&apos;re on your RWA committee, register it on the BorrowVault website with your RWA registration
-          certificate, an authorisation letter and your ID. We verify them, then you become its admin.
+          Any resident can register it on the BorrowVault website with their ID and a proof of residence. We check them,
+          then open it as a pilot society with you as its admin.
         </P>
         <Button title="Register it on the web" icon="open-outline" variant="secondary" onPress={() => void register()} />
         <ErrorText>{linkError}</ErrorText>

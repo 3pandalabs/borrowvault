@@ -7,6 +7,9 @@ import { db } from "../db/index.js";
 import { bookings, inviteCodes, listings, memberships, societies, towers, units, users } from "../db/schema.js";
 import { approvedSocietyIds, isPlatformAdmin, isSocietyAdmin } from "../lib/authz.js";
 import { conflict, invalid, notFound } from "../lib/errors.js";
+import { sweepDueNominations } from "../lib/adminApproval.js";
+import { assertRoomForMember, isPilot, pilotFull } from "../lib/pilot.js";
+import { approvedMemberCount, memberCountSql } from "../lib/societyTier.js";
 import { UPI_VPA_RE } from "../lib/upi.js";
 import { membershipById, membershipsOf, userView } from "../lib/users.js";
 import { adminDocKey, listingPhotoKey, parseKey, presignDownload, presignUpload, proofKey } from "../plugins/r2.js";
@@ -22,6 +25,8 @@ export async function societyRoutes(fastify: FastifyInstance) {
   app.get("/me", { preHandler: requireAuth }, async (req) => {
     const [u] = await db.select().from(users).where(eq(users.id, req.userId!)).limit(1);
     if (!u) throw notFound();
+    // Backstop for the worker's auto-approve sweep, so a nominee sees their new role.
+    await sweepDueNominations({ requesterId: u.id });
     return { user: userView(u), memberships: await membershipsOf(u.id) };
   });
 
@@ -60,12 +65,13 @@ export async function societyRoutes(fastify: FastifyInstance) {
   app.get("/societies", { schema: { querystring: z.object({ q: z.string().max(100).optional() }) } }, async (req) => {
     const q = req.query.q?.trim();
     const rows = await db
-      .select({ id: societies.id, name: societies.name, city: societies.city })
+      .select({ id: societies.id, name: societies.name, city: societies.city, tier: societies.tier, memberCount: memberCountSql })
       .from(societies)
       .where(and(eq(societies.status, "live"), q ? ilike(societies.name, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
       .orderBy(asc(societies.name))
       .limit(50);
-    return rows;
+    // `full` only, never the count itself: this route is public.
+    return rows.map((r) => ({ id: r.id, name: r.name, city: r.city, tier: r.tier, full: pilotFull(r.tier, Number(r.memberCount)) }));
   });
 
   app.get("/societies/:id/towers", { schema: { params: z.object({ id: uuid }) } }, async (req) => {
@@ -94,6 +100,8 @@ export async function societyRoutes(fastify: FastifyInstance) {
       const b = req.body;
       const [s] = await db.select().from(societies).where(and(eq(societies.id, societyId), eq(societies.status, "live")));
       if (!s) throw notFound();
+      // A full pilot can't approve anyone, so don't queue a request it can't grant.
+      if (isPilot(s.tier)) assertRoomForMember(s.tier, await approvedMemberCount(societyId));
       const [t] = await db.select().from(towers).where(and(eq(towers.id, b.towerId), eq(towers.societyId, societyId)));
       if (!t) throw invalid("unknown tower");
       if (b.proofKey) {

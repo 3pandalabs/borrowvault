@@ -121,7 +121,7 @@ export default function OnboardingPage() {
             <Link href="/societies/register" className="text-accent hover:underline">
               Register it
             </Link>{" "}
-            (for RWA and committee members).
+            (any resident can).
           </p>
         ) : null}
         {results.error ? <ErrorText>{errorMessage(results.error)}</ErrorText> : null}
@@ -131,7 +131,8 @@ export default function OnboardingPage() {
               {results.data.map((s) => (
                 <li key={s.id}>
                   <button
-                    className={`flex w-full items-center justify-between px-4 py-3 text-left hover:bg-zinc-50 ${society?.id === s.id ? "bg-emerald-50" : ""}`}
+                    className={`flex w-full items-center justify-between px-4 py-3 text-left hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 ${society?.id === s.id ? "bg-emerald-50" : ""}`}
+                    disabled={s.full}
                     onClick={() => {
                       setSociety(s);
                       setTowerId("");
@@ -140,6 +141,12 @@ export default function OnboardingPage() {
                     <span>
                       <span className="font-medium">{s.name}</span>
                       <span className="ml-2 text-sm text-fg-muted">{s.city}</span>
+                      {s.tier === "pilot" ? <span className="ml-2 text-xs text-fg-muted">Pilot society</span> : null}
+                      {s.full ? (
+                        <span className="block text-xs text-amber-700">
+                          Full for now. Pilot societies take up to 50 members until BorrowVault verifies them.
+                        </span>
+                      ) : null}
                     </span>
                     {society?.id === s.id ? <CheckCircle2 className="size-4 text-accent" /> : null}
                   </button>
@@ -150,7 +157,7 @@ export default function OnboardingPage() {
             <div className="mt-3">
               <EmptyState
                 title="No live society matches that"
-                body="Try a different spelling. If your society isn't on BorrowVault yet, a committee member can register it: BorrowVault checks the RWA's documents and opens it."
+                body="Try a different spelling. If your society isn't on BorrowVault yet, any resident can register it with their ID and a proof of residence."
                 action={
                   <Link href="/societies/register">
                     <Button size="sm" variant="outline">

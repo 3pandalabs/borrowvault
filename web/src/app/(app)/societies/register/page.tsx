@@ -10,6 +10,7 @@ import {
   emptySlot,
   lengthError,
   mapsUrl,
+  PilotLimits,
   uploadDocs,
 } from "@/components/adminRequests";
 import { ErrorText, Field, Loading, PageHeader, Panel } from "@/components/common";
@@ -19,7 +20,7 @@ import { createAdminRequest, errorMessage, myAdminRequests, tryGeo } from "@/lib
 import { useAsync } from "@/lib/hooks";
 import type { Occupancy } from "@/lib/types";
 
-type Docs = { rwaRegistrationKey: DocSlot; authorizationKey: DocSlot; idProofKey: DocSlot };
+type Docs = { idProofKey: DocSlot; residenceProofKey: DocSlot };
 
 const EMPTY = {
   societyName: "",
@@ -39,7 +40,7 @@ export default function RegisterSocietyPage() {
   const mine = useAsync(myAdminRequests, "admin-requests-mine");
   const [form, setForm] = useState(EMPTY);
   const [occupancy, setOccupancy] = useState<Occupancy>("owner");
-  const [docs, setDocs] = useState<Docs>({ rwaRegistrationKey: emptySlot, authorizationKey: emptySlot, idProofKey: emptySlot });
+  const [docs, setDocs] = useState<Docs>({ idProofKey: emptySlot, residenceProofKey: emptySlot });
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState<"upload" | "send" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +137,7 @@ export default function RegisterSocietyPage() {
           <Clock className="mx-auto size-10 text-amber-500" />
           <h1 className="mt-3 text-xl font-semibold">Your registration is under review</h1>
           <p className="mt-2 text-sm text-fg-muted">
-            BorrowVault is checking the documents for <span className="font-medium text-fg">{pending.societyName}</span>.
+            BorrowVault is checking the request for <span className="font-medium text-fg">{pending.societyName}</span>.
             You can have one society registration open at a time.
           </p>
           <Link href="/admin-requests" className="mt-5 inline-block">
@@ -151,8 +152,12 @@ export default function RegisterSocietyPage() {
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="Register your society"
-        subtitle="For RWA and committee members. BorrowVault checks your documents, then opens your society and makes you its first admin."
+        subtitle="Any resident can start. Upload your ID and a proof that you live there. BorrowVault checks them, then opens your society and makes you its first admin."
       />
+
+      <div className="mb-4">
+        <PilotLimits intro="Your society starts as a pilot. Until the BorrowVault team verifies it:" />
+      </div>
 
       <form onSubmit={submit} className="space-y-4" noValidate>
         <Panel className="space-y-4">
@@ -235,10 +240,10 @@ export default function RegisterSocietyPage() {
             </div>
           </Field>
           <Field
-            label="Your role on the committee"
+            label="Your role in the society"
             htmlFor="role"
             error={errs.committeeRole ?? required(form.committeeRole)}
-            hint="e.g. Secretary, President, Treasurer, Committee member."
+            hint="e.g. Resident, Secretary, Treasurer, Committee member."
           >
             <Input id="role" maxLength={60} value={form.committeeRole} onChange={set("committeeRole")} />
           </Field>
@@ -259,9 +264,8 @@ export default function RegisterSocietyPage() {
               Only BorrowVault&apos;s verification team can open these. Your neighbours and other admins never see them.
             </p>
           </div>
-          <DocPicker kind="rwaRegistration" slot={docs.rwaRegistrationKey} onPick={setDoc("rwaRegistrationKey")} showMissing={tried} />
-          <DocPicker kind="authorization" slot={docs.authorizationKey} onPick={setDoc("authorizationKey")} showMissing={tried} />
           <DocPicker kind="idProof" slot={docs.idProofKey} onPick={setDoc("idProofKey")} showMissing={tried} />
+          <DocPicker kind="residenceProof" slot={docs.residenceProofKey} onPick={setDoc("residenceProofKey")} showMissing={tried} />
         </Panel>
 
         <ErrorText>{error}</ErrorText>

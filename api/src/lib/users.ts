@@ -22,6 +22,7 @@ export type MembershipView = {
   id: string;
   societyId: string;
   societyName: string;
+  societyTier: "pilot" | "verified";
   towerName: string | null;
   flatNo: string | null;
   role: "resident" | "society_admin";
@@ -35,6 +36,7 @@ export const membershipSelect = {
   userId: memberships.userId,
   societyId: memberships.societyId,
   societyName: societies.name,
+  societyTier: societies.tier,
   towerName: towers.name,
   flatNo: units.flatNo,
   role: memberships.role,
@@ -57,6 +59,7 @@ export function toMembershipView(r: {
   id: string;
   societyId: string;
   societyName: string;
+  societyTier: "pilot" | "verified";
   towerName: string | null;
   flatNo: string | null;
   role: "resident" | "society_admin";
@@ -68,6 +71,7 @@ export function toMembershipView(r: {
     id: r.id,
     societyId: r.societyId,
     societyName: r.societyName,
+    societyTier: r.societyTier,
     towerName: r.towerName,
     flatNo: r.flatNo,
     role: r.role,

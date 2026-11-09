@@ -11,7 +11,7 @@ import { openWeb } from "../../src/lib/openWeb";
 import { colors } from "../../src/lib/theme";
 import type { AdminRequest, ListingSummary, Membership, User } from "../../src/lib/types";
 import { isValidVpa, normalisePhone } from "../../src/lib/validation";
-import { adminRequestUrl } from "../../src/lib/web";
+import { adminRequestUrl, societyAdminsUrl } from "../../src/lib/web";
 
 export default function Profile() {
   const router = useRouter();
@@ -60,7 +60,8 @@ export default function Profile() {
             </View>
             <P muted>
               {m.towerName}-{m.flatNo} · {m.occupancy}
-              {m.role === "society_admin" ? " · Society admin" : ""} · since {formatDate(m.createdAt)}
+              {m.role === "society_admin" ? " · Society admin" : ""}
+              {m.societyTier === "pilot" ? " · Pilot society" : ""} · since {formatDate(m.createdAt)}
             </P>
           </View>
         ))}
@@ -134,9 +135,9 @@ function SocietyAdminCard({
       {eligible.length > 0 ? (
         <>
           <P muted>
-            Admins approve residents and settle disputes for their society. To become one, upload on the BorrowVault
-            website: a letter on RWA letterhead or a committee resolution naming you, and your own ID proof (a masked
-            Aadhaar or a utility bill). The BorrowVault team verifies them before you get admin access.
+            Admins approve residents and settle disputes for their society. To become one, upload your own ID proof on
+            the BorrowVault website (a masked Aadhaar, PAN, passport or driving licence). An admin can also nominate
+            you. The BorrowVault team checks every admin.
           </P>
           {eligible.map((m) =>
             pendingFor(m.societyId) ? (
@@ -157,8 +158,19 @@ function SocietyAdminCard({
           <ErrorText>{error}</ErrorText>
         </>
       ) : (
-        <P muted>Track the admin requests you&apos;ve sent from the BorrowVault website.</P>
+        <P muted>Track your admin requests and co-admin nominations.</P>
       )}
+      {memberships
+        .filter((m) => m.status === "approved" && m.role === "society_admin")
+        .map((m) => (
+          <Button
+            key={m.id}
+            title={`Nominate a co-admin for ${m.societyName}`}
+            icon="open-outline"
+            variant="ghost"
+            onPress={() => void openWeb(societyAdminsUrl(m.societyId)).then(setError)}
+          />
+        ))}
     </Card>
   );
 }

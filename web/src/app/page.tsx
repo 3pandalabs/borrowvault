@@ -106,10 +106,10 @@ export default function Landing() {
           <div className="flex gap-4">
             <Building2 className="size-7 shrink-0 text-accent" />
             <div>
-              <h2 className="text-lg font-semibold text-fg">Run your society&apos;s RWA or committee?</h2>
+              <h2 className="text-lg font-semibold text-fg">Your society isn&apos;t on BorrowVault yet?</h2>
               <p className="mt-1 max-w-xl text-sm text-fg-muted">
-                Register your society on BorrowVault. We check your RWA&apos;s documents, then open it for your residents
-                with you as its admin.
+                Any resident can register it. Upload your ID and a proof that you live there. We check them, then open it
+                as a pilot society with you as its admin.
               </p>
             </div>
           </div>

@@ -1,13 +1,31 @@
 "use client";
 
-import { CheckCircle2, FileCheck2, Plus } from "lucide-react";
+import { CheckCircle2, FileCheck2, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { DocLink, DOC_GUIDE, KIND_LABEL, RequestStatusBadge } from "@/components/adminRequests";
-import { EmptyState, ErrorText, LoadError, Loading, PageHeader, Panel } from "@/components/common";
+import {
+  DocLink,
+  DOC_GUIDE,
+  DocPicker,
+  type DocSlot,
+  emptySlot,
+  KIND_LABEL,
+  lengthError,
+  RequestStatusBadge,
+  uploadDocs,
+} from "@/components/adminRequests";
+import { EmptyState, ErrorText, Field, LoadError, Loading, PageHeader, Panel } from "@/components/common";
 import { Button } from "@/components/ui/button";
-import { errorMessage, myAdminRequests, storageUrl, withdrawAdminRequest } from "@/lib/api";
+import { Textarea } from "@/components/ui/input";
+import {
+  acceptNomination,
+  declineNomination,
+  errorMessage,
+  myAdminRequests,
+  storageUrl,
+  withdrawAdminRequest,
+} from "@/lib/api";
 import { formatIST } from "@/lib/format";
 import { useAction, useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
@@ -44,7 +62,7 @@ function MyRequests() {
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="My admin requests"
-        subtitle="Requests to register a society or to become one of its admins. BorrowVault reviews each one against your documents."
+        subtitle="Your requests to register a society or become an admin, and co-admin nominations for you. Every admin uploads their own ID proof."
         actions={
           <Link href="/societies/register">
             <Button variant="outline" size="sm">
@@ -72,7 +90,7 @@ function MyRequests() {
         <EmptyState
           icon={<FileCheck2 />}
           title="No requests yet"
-          body="Committee members can register their society on BorrowVault, or apply to be an admin of a society they already live in."
+          body="Any resident can register their society on BorrowVault, or apply to be an admin of a society they already live in."
           action={
             <>
               <Link href="/societies/register">
@@ -103,15 +121,69 @@ function MyRequests() {
   );
 }
 
+/** Nominee's answer to a co-admin nomination: upload ID proof (required) + optional note, or decline. */
+function NominationAnswer({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRequest) => void }) {
+  const action = useAction();
+  const [slot, setSlot] = useState<DocSlot>(emptySlot);
+  const [statement, setStatement] = useState("");
+  const [tried, setTried] = useState(false);
+  const stmtErr = lengthError("Note", statement, 0, 1000);
+
+  return (
+    <div className="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm">
+      <p>
+        {`${r.nominatedBy?.displayName ?? "An admin"} nominated you as a co-admin of ${r.societyName}. Admins approve residents, issue invite codes and settle disputes.`}
+      </p>
+      <p className="text-xs text-fg-muted">
+        To accept, upload your ID proof. BorrowVault approves you automatically 48 hours later, unless its team rejects it first.
+      </p>
+      <DocPicker kind="idProof" slot={slot} onPick={setSlot} showMissing={tried} />
+      <Field label="Anything we should know? (optional)" htmlFor={`stmt-${r.id}`} error={stmtErr} hint={`${statement.trim().length}/1000`}>
+        <Textarea id={`stmt-${r.id}`} maxLength={1000} rows={2} value={statement} onChange={(e) => setStatement(e.target.value)} />
+      </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          disabled={action.busy}
+          onClick={() => {
+            setTried(true);
+            if (!slot.file || stmtErr) return;
+            action.run(async () => {
+              const keys = await uploadDocs({ idProofKey: slot }, (_k, key) => setSlot((s) => ({ ...s, key })));
+              const s = statement.trim();
+              onChanged(await acceptNomination(r.id, { idProofKey: keys.idProofKey, ...(s ? { statement: s } : {}) }));
+            }, errorMessage);
+          }}
+        >
+          {action.busy ? <Loader2 className="animate-spin" /> : null} Accept
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={action.busy}
+          onClick={() => {
+            if (window.confirm("Decline this nomination?")) action.run(async () => onChanged(await declineNomination(r.id)), errorMessage);
+          }}
+        >
+          Decline
+        </Button>
+      </div>
+      <ErrorText>{action.error}</ErrorText>
+    </div>
+  );
+}
+
 function RequestCard({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRequest) => void }) {
   const action = useAction();
   const [showDocs, setShowDocs] = useState(false);
   const p = r.proposedSociety;
   const docs: [string, string | null][] = [
-    [DOC_GUIDE.rwaRegistration.label, r.docs.rwaRegistrationKey],
-    [DOC_GUIDE.authorization.label, r.docs.authorizationKey],
     [DOC_GUIDE.idProof.label, r.docs.idProofKey],
+    [DOC_GUIDE.residenceProof.label, r.docs.residenceProofKey],
+    ["RWA registration certificate", r.docs.rwaRegistrationKey],
+    ["Authorisation letter", r.docs.authorizationKey],
   ];
+  const hasDocs = docs.some((d) => !!d[1]);
 
   return (
     <li>
@@ -122,11 +194,20 @@ function RequestCard({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRe
             <p className="mt-0.5 font-semibold">{r.societyName}</p>
             <p className="text-sm text-fg-muted">
               {p ? `${p.city} · ${p.towerName} · ${p.flatNo} · ` : ""}
+              {r.nominatedBy ? `Nominated by ${r.nominatedBy.displayName} · ` : ""}
               {r.committeeRole} · sent {formatIST(r.createdAt, { time: false })}
             </p>
           </div>
           <RequestStatusBadge status={r.status} />
         </div>
+
+        {r.kind === "nominate_admin" && r.status === "nominated" ? <NominationAnswer r={r} onChanged={onChanged} /> : null}
+
+        {r.kind === "nominate_admin" && r.status === "pending" && r.autoApproveAt ? (
+          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+            {`You accepted. You become an admin on ${formatIST(r.autoApproveAt)}, unless BorrowVault rejects it before then.`}
+          </p>
+        ) : null}
 
         {r.status === "rejected" && r.reviewNote ? (
           <div className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-900">
@@ -160,7 +241,7 @@ function RequestCard({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRe
           <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">
             <p>
               {r.kind === "new_society"
-                ? `${r.societyName} is live on BorrowVault and you're its admin. Add your towers and share invite codes to bring neighbours in.`
+                ? `${r.societyName} is live on BorrowVault as a pilot society, and you're its admin. Add your towers and share invite codes to bring neighbours in.`
                 : `You're now an admin of ${r.societyName}.`}
             </p>
             {r.reviewNote ? <p className="mt-1 whitespace-pre-line text-xs">Note from BorrowVault: {r.reviewNote}</p> : null}
@@ -173,9 +254,11 @@ function RequestCard({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRe
         ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setShowDocs((s) => !s)}>
-            {showDocs ? "Hide documents" : "View my documents"}
-          </Button>
+          {hasDocs ? (
+            <Button size="sm" variant="ghost" onClick={() => setShowDocs((s) => !s)}>
+              {showDocs ? "Hide documents" : "View my documents"}
+            </Button>
+          ) : null}
           {r.status === "pending" ? (
             <Button
               size="sm"

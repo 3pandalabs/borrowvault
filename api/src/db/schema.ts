@@ -118,8 +118,12 @@ export const societies = pgTable("societies", {
   status: text("status").notNull().default("onboarding"), // onboarding | live | suspended
   // { depositMode?: "declared" | "p2p" }
   settings: jsonb("settings").$type<{ depositMode?: "declared" | "p2p" }>().notNull().default({}),
+  // pilot: self-serve society with limits (lib/pilot.ts, ROUTES.md "Pilot societies")
+  // until a platform admin marks it verified. Pre-existing rows are verified.
+  tier: text("tier", { enum: ["pilot", "verified"] }).notNull().default("verified"),
+  verifiedAt: ts("verified_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
-});
+}, (t) => [check("societies_tier", sql`${t.tier} in ('pilot', 'verified')`)]);
 
 export const towers = pgTable(
   "towers",
@@ -200,22 +204,29 @@ export const inviteCodes = pgTable(
   (t) => [index("invite_codes_society").on(t.societyId)],
 );
 
-// Admin requests: nobody becomes society_admin without a platform admin
-// approving one of these, backed by uploaded documents (admin-docs/ keys).
-//   new_society: register a society + make the requester its admin
-//   join_admin:  promote the requester in a society they're an approved member of
-export const adminRequestKind = pgEnum("admin_request_kind", ["new_society", "join_admin"]);
-export const adminRequestStatus = pgEnum("admin_request_status", ["pending", "approved", "rejected", "withdrawn"]);
+// Admin requests: nobody becomes society_admin without one of these carrying
+// their own ID proof (admin-docs/ keys). See api/ROUTES.md "Admin requests".
+//   new_society:    register a society (starts as a pilot) + make the requester its admin
+//   join_admin:     promote the requester in a society they're an approved member of
+//   nominate_admin: a society admin nominates a resident (requester = the nominee);
+//                   auto-approved 48 h after the nominee uploads ID (lib/nominations.ts)
+// kind/status are text + CHECK (pg enums until 0006): a new enum value can't
+// be used in the transaction that adds it, and drizzle runs every pending
+// migration in one transaction.
+export const ADMIN_REQUEST_KINDS = ["new_society", "join_admin", "nominate_admin"] as const;
+export const ADMIN_REQUEST_STATUSES = ["nominated", "pending", "approved", "rejected", "withdrawn", "declined", "cancelled"] as const;
+export type AdminRequestKind = (typeof ADMIN_REQUEST_KINDS)[number];
+export type AdminRequestStatus = (typeof ADMIN_REQUEST_STATUSES)[number];
 
 export const adminRequests = pgTable(
   "admin_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    kind: adminRequestKind("kind").notNull(),
+    kind: text("kind", { enum: ADMIN_REQUEST_KINDS }).notNull(),
     requesterId: uuid("requester_id")
       .notNull()
       .references(() => users.id),
-    // join_admin: required. new_society: filled on approval with the new society.
+    // join_admin / nominate_admin: required. new_society: filled on approval with the new society.
     societyId: uuid("society_id").references(() => societies.id),
     // Proposed society (new_society only)
     societyName: text("society_name"),
@@ -230,11 +241,19 @@ export const adminRequests = pgTable(
     committeeRole: text("committee_role").notNull(),
     statement: text("statement"),
     // Documents: admin-docs/<requesterId>/... keys, the requester's own uploads.
-    rwaRegistrationKey: text("rwa_registration_key"), // required for new_society
-    authorizationKey: text("authorization_key").notNull(),
-    idProofKey: text("id_proof_key").notNull(),
-    status: adminRequestStatus("status").notNull().default("pending"),
-    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    // rwa_registration_key / authorization_key are legacy (no longer accepted);
+    // kept nullable so older rows stay readable.
+    rwaRegistrationKey: text("rwa_registration_key"),
+    authorizationKey: text("authorization_key"),
+    // Required on every request except a nomination the nominee hasn't accepted.
+    idProofKey: text("id_proof_key"),
+    residenceProofKey: text("residence_proof_key"), // new_society
+    // nominate_admin only
+    nominatedBy: uuid("nominated_by").references(() => users.id),
+    nomineeAcceptedAt: ts("nominee_accepted_at"),
+    autoApproveAt: ts("auto_approve_at"),
+    status: text("status", { enum: ADMIN_REQUEST_STATUSES }).notNull().default("pending"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id), // null on an automatic decision
     reviewedAt: ts("reviewed_at"),
     reviewNote: text("review_note"),
     createdAt: ts("created_at").notNull().defaultNow(),
@@ -243,6 +262,9 @@ export const adminRequests = pgTable(
   (t) => [
     index("admin_requests_status_created").on(t.status, t.createdAt),
     index("admin_requests_requester").on(t.requesterId, t.createdAt),
+    index("admin_requests_society").on(t.societyId, t.createdAt),
+    // The auto-approve sweep: pending nominations whose 48 h are up.
+    index("admin_requests_auto_approve").on(t.autoApproveAt).where(sql`status = 'pending' and auto_approve_at is not null`),
     // One pending request per (requester, kind, society). society_id is NULL on
     // a pending new_society request, so that kind gets its own index.
     uniqueIndex("admin_requests_one_pending_join")
@@ -251,9 +273,23 @@ export const adminRequests = pgTable(
     uniqueIndex("admin_requests_one_pending_new")
       .on(t.requesterId)
       .where(sql`status = 'pending' and kind = 'new_society'`),
+    // One open nomination per (nominee, society).
+    uniqueIndex("admin_requests_one_open_nomination")
+      .on(t.requesterId, t.societyId)
+      .where(sql`status in ('nominated', 'pending') and kind = 'nominate_admin'`),
+    check("admin_requests_kind", sql`${t.kind} in ('new_society', 'join_admin', 'nominate_admin')`),
     check(
-      "admin_requests_shape",
-      sql`(${t.kind} = 'join_admin' and ${t.societyId} is not null) or (${t.kind} = 'new_society' and ${t.societyName} is not null and ${t.city} is not null and ${t.address} is not null and ${t.centerLat} is not null and ${t.centerLng} is not null and ${t.radiusM} is not null and ${t.towerName} is not null and ${t.flatNo} is not null and ${t.occupancy} in ('owner', 'tenant', 'family') and ${t.rwaRegistrationKey} is not null)`,
+      "admin_requests_status",
+      sql`${t.status} in ('nominated', 'pending', 'approved', 'rejected', 'withdrawn', 'declined', 'cancelled')`,
+    ),
+    check(
+      "admin_requests_shape_v2",
+      sql`(${t.kind} in ('join_admin', 'nominate_admin') and ${t.societyId} is not null) or (${t.kind} = 'new_society' and ${t.societyName} is not null and ${t.city} is not null and ${t.address} is not null and ${t.centerLat} is not null and ${t.centerLng} is not null and ${t.radiusM} is not null and ${t.towerName} is not null and ${t.flatNo} is not null and ${t.occupancy} in ('owner', 'tenant', 'family'))`,
+    ),
+    check("admin_requests_nominator", sql`(${t.kind} = 'nominate_admin') = (${t.nominatedBy} is not null)`),
+    check(
+      "admin_requests_id_proof",
+      sql`${t.idProofKey} is not null or (${t.kind} = 'nominate_admin' and ${t.status} in ('nominated', 'declined', 'cancelled'))`,
     ),
   ],
 );

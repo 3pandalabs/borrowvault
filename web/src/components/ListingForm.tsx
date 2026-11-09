@@ -8,6 +8,7 @@ import { paiseToRupeesInput, rupeesToPaise } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
 import type { ChecklistItem, ChecklistType, Listing, ListingInput, ListingKind, ListingStatus } from "@/lib/types";
+import { PILOT_VALUE_CAP_PAISE } from "./adminRequests";
 import { ErrorText, Field, Panel, PanelTitle, selectClass } from "./common";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
@@ -39,8 +40,11 @@ export function ListingForm({
   submitLabel: string;
   onSubmit: (v: ListingFormValue) => Promise<void>;
 }) {
-  const { user } = useSession();
+  const { user, memberships, active } = useSession();
   const categories = useAsync(getCategories, "categories");
+  // Pilot societies cap deposit and replacement value (ROUTES.md "Pilot societies").
+  const listingSocietyId = initial?.societyId ?? active?.societyId;
+  const pilot = memberships.find((m) => m.societyId === listingSocietyId)?.societyTier === "pilot";
 
   const [kind, setKind] = useState<ListingKind>(initial?.kind ?? "item");
   const [category, setCategory] = useState(initial?.category ?? "");
@@ -114,6 +118,9 @@ export function ListingForm({
       if (raw.trim() && val === null) return setError(`${label}: enter an amount in rupees, like 350 or 350.50.`);
     }
     if (kind === "item" && deposit.trim() && rupeesToPaise(deposit) === null) return setError("Deposit: enter an amount in rupees.");
+    if (pilot && kind === "item" && (depositPaise > PILOT_VALUE_CAP_PAISE || (replacementValuePaise ?? 0) > PILOT_VALUE_CAP_PAISE)) {
+      return setError("Your society is a pilot society. The deposit and replacement value can be at most ₹5,000 each.");
+    }
     if (!hourlyPaise && !dailyPaise && !weekendPaise) return setError("Set at least one price: hourly, daily or weekend.");
     if (!category) return setError("Pick a category.");
     const cleanChecklist =
@@ -240,10 +247,18 @@ export function ListingForm({
         </div>
         {kind === "item" ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Deposit (₹)" htmlFor="dep" hint="The most a dispute can award you. 0 for none.">
+            <Field
+              label="Deposit (₹)"
+              htmlFor="dep"
+              hint={pilot ? "The most a dispute can award you. 0 for none. Up to ₹5,000 in a pilot society." : "The most a dispute can award you. 0 for none."}
+            >
               <Input id="dep" inputMode="decimal" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
             </Field>
-            <Field label="Replacement value (₹, optional)" htmlFor="rep">
+            <Field
+              label="Replacement value (₹, optional)"
+              htmlFor="rep"
+              hint={pilot ? "Up to ₹5,000 in a pilot society." : undefined}
+            >
               <Input id="rep" inputMode="decimal" value={replacement} onChange={(e) => setReplacement(e.target.value)} />
             </Field>
           </div>

@@ -38,9 +38,12 @@ export default function ArbitrationPage() {
 }
 
 function Arbitration({ b, set }: { b: BookingDetail; set: (b: BookingDetail) => void }) {
-  const { user } = useSession();
+  const { user, memberships } = useSession();
   const d = b.dispute;
   const isParty = user.id === b.lender.id || user.id === b.borrower.id;
+  // Pilot societies: only platform admins rule (ROUTES.md "Pilot societies").
+  const tier = memberships.find((m) => m.societyId === b.society.id)?.societyTier;
+  const pilotOnlyPlatform = tier === "pilot" && !user.isPlatformAdmin;
   const partyName = (uid: string) =>
     uid === b.lender.id ? `${b.lender.displayName} (lender)` : uid === b.borrower.id ? `${b.borrower.displayName} (borrower)` : "a party";
 
@@ -113,6 +116,16 @@ function Arbitration({ b, set }: { b: BookingDetail; set: (b: BookingDetail) => 
                   <ShieldAlert className="size-4" /> You can&apos;t rule on this one
                 </p>
                 <p className="mt-1">You&apos;re a party to this booking. Another society admin, or 3PandaLabs, has to rule.</p>
+              </Panel>
+            ) : pilotOnlyPlatform ? (
+              <Panel className="border-amber-200 bg-amber-50 text-sm text-amber-900">
+                <p className="flex items-center gap-2 font-medium">
+                  <ShieldAlert className="size-4" /> The BorrowVault team rules this one
+                </p>
+                <p className="mt-1">
+                  This is a pilot society. In pilot societies, the BorrowVault team rules disputes, not society admins. You can
+                  still read the evidence here.
+                </p>
               </Panel>
             ) : (
               <RulingForm b={b} onDone={set} />

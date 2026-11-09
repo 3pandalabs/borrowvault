@@ -8,5 +8,12 @@ export const WEB_URL = "https://borrowvault.3pandalabs.com";
 export const registerSocietyUrl = () => `${WEB_URL}/societies/register`;
 
 /** "Make me an admin of a society I live in" (a `join_admin` admin request). */
+/** My admin requests, including co-admin nominations to accept (ID upload) or decline. */
+export const myAdminRequestsUrl = () => `${WEB_URL}/admin-requests`;
+
+/** Society admin console; the Admins tab is where co-admins are nominated. */
+export const societyAdminsUrl = (societyId: string) =>
+  `${WEB_URL}/admin/${encodeURIComponent(societyId)}?tab=admins`;
+
 export const adminRequestUrl = (societyId: string) =>
   `${WEB_URL}/admin-requests/new?societyId=${encodeURIComponent(societyId)}`;

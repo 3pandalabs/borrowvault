@@ -1,7 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db, type DbOrTx } from "../db/index.js";
-import { memberships, towers, units, users } from "../db/schema.js";
+import { memberships, societies, towers, units, users } from "../db/schema.js";
 import { forbidden, notFound } from "./errors.js";
+import { assertMayRule } from "./pilot.js";
 
 // Society scoping. Rule (CLAUDE.md): anything outside the caller's APPROVED
 // societies is a 404, never a 403, so existence never leaks. 403 is only for
@@ -84,6 +85,9 @@ export async function assertArbiter(
 ): Promise<void> {
   if (arbiterId === b.lenderId || arbiterId === b.borrowerId) throw forbidden("parties cannot arbitrate");
   if (!(await isSocietyAdmin(arbiterId, b.societyId, q))) throw forbidden("not an arbiter for this society");
+  // Pilot societies: platform admins only (the checks above and below still apply to them).
+  const [s] = await q.select({ tier: societies.tier }).from(societies).where(eq(societies.id, b.societyId)).limit(1);
+  assertMayRule(s?.tier ?? "verified", await isPlatformAdmin(arbiterId, q));
   if (await sharesUnitWithParty(arbiterId, b, q)) throw forbidden("arbiter lives in a party's unit");
 }
 

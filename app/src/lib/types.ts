@@ -23,6 +23,8 @@ export type Membership = {
   id: string;
   societyId: string;
   societyName: string;
+  /** pilot = new self-serve society with limits until BorrowVault verifies it. */
+  societyTier: SocietyTier;
   towerName: string;
   flatNo: string;
   role: "resident" | "society_admin";
@@ -33,7 +35,10 @@ export type Membership = {
 
 export type Me = { user: User; memberships: Membership[] };
 
-export type SocietySearchResult = { id: string; name: string; city: string };
+export type SocietyTier = "pilot" | "verified";
+
+/** `full` = a pilot society at its member cap (joining fails with 409 `society_full`). */
+export type SocietySearchResult = { id: string; name: string; city: string; tier: SocietyTier; full: boolean };
 export type Tower = { id: string; name: string };
 
 export type DepositMode = "declared" | "p2p";
@@ -47,14 +52,25 @@ export type Society = {
   radiusM: number;
   settings: { depositMode: DepositMode };
   status: string;
+  tier: SocietyTier;
+  verifiedAt: string | null;
+  memberCount: number;
+  createdAt: string;
 };
 
 export type PresignPurpose = "proof" | "listing_photo" | "admin_doc";
 
 // ---- Admin requests (becoming a society admin; submitted on the web) ----
 
-export type AdminRequestKind = "new_society" | "join_admin";
-export type AdminRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type AdminRequestKind = "new_society" | "join_admin" | "nominate_admin";
+export type AdminRequestStatus =
+  | "nominated"
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "withdrawn"
+  | "declined"
+  | "cancelled";
 
 export type AdminRequest = {
   id: string;
@@ -79,7 +95,16 @@ export type AdminRequest = {
   } | null;
   committeeRole: string;
   statement: string | null;
-  docs: { rwaRegistrationKey: string | null; authorizationKey: string; idProofKey: string };
+  docs: {
+    idProofKey: string | null;
+    residenceProofKey: string | null;
+    rwaRegistrationKey: string | null;
+    authorizationKey: string | null;
+  };
+  /** nominate_admin only. */
+  nominatedBy: { id: string; displayName: string } | null;
+  nomineeAcceptedAt: string | null;
+  autoApproveAt: string | null;
   reviewNote: string | null;
   reviewedAt: string | null;
   createdAt: string;

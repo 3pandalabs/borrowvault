@@ -12,7 +12,7 @@ import { ApiError, createAdminRequest, errorMessage, myAdminRequests } from "@/l
 import { useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
 
-type Docs = { authorizationKey: DocSlot; idProofKey: DocSlot };
+type Docs = { idProofKey: DocSlot };
 
 // /admin-requests/new?societyId=<uuid> (the mobile app deep-links here).
 export default function NewAdminRequestPage() {
@@ -32,7 +32,7 @@ function NewAdminRequest() {
   const eligible = approved.filter((m) => m.role !== "society_admin");
   return (
     <div className="mx-auto max-w-lg">
-      <PageHeader title="Become a society admin" subtitle="Pick the society you're on the committee of." />
+      <PageHeader title="Become a society admin" subtitle="Pick the society you live in." />
       {eligible.length ? (
         <ul className="divide-y divide-line rounded-2xl border border-line bg-white">
           {eligible.map((m) => (
@@ -69,7 +69,7 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
 
   const [committeeRole, setCommitteeRole] = useState("");
   const [statement, setStatement] = useState("");
-  const [docs, setDocs] = useState<Docs>({ authorizationKey: emptySlot, idProofKey: emptySlot });
+  const [docs, setDocs] = useState<Docs>({ idProofKey: emptySlot });
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState<"upload" | "send" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,15 +110,25 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
   }
 
   if (mine.loading && !mine.data) return <Loading />;
-  const pending = mine.data?.find((r) => r.kind === "join_admin" && r.status === "pending" && r.societyId === societyId);
+  const pending = mine.data?.find(
+    (r) =>
+      r.societyId === societyId &&
+      ((r.kind === "join_admin" && r.status === "pending") ||
+        (r.kind === "nominate_admin" && (r.status === "pending" || r.status === "nominated"))),
+  );
   if (pending) {
+    const nominated = pending.kind === "nominate_admin";
     return (
       <div className="mx-auto max-w-lg">
         <Panel className="text-center">
           <Clock className="mx-auto size-10 text-amber-500" />
-          <h1 className="mt-3 text-xl font-semibold">Your request is under review</h1>
+          <h1 className="mt-3 text-xl font-semibold">
+            {nominated ? "You have an open co-admin nomination" : "Your request is under review"}
+          </h1>
           <p className="mt-2 text-sm text-fg-muted">
-            BorrowVault is checking your documents for <span className="font-medium text-fg">{membership.societyName}</span>.
+            {nominated
+              ? `An admin of ${membership.societyName} nominated you as co-admin. Answer it on My requests.`
+              : `BorrowVault is checking your request for ${membership.societyName}.`}
           </p>
           <Link href="/admin-requests" className="mt-5 inline-block">
             <Button>See my requests</Button>
@@ -135,7 +145,7 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
     e.preventDefault();
     setTried(true);
     setError(null);
-    if (!committeeRole.trim() || roleErr || stmtErr || !docs.authorizationKey.file || !docs.idProofKey.file) {
+    if (!committeeRole.trim() || roleErr || stmtErr || !docs.idProofKey.file) {
       setError("Fix the highlighted fields first.");
       return;
     }
@@ -171,7 +181,7 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title={`Become an admin of ${membership.societyName}`}
-        subtitle="Admins approve residents, issue invite codes and settle disputes. BorrowVault verifies every admin against committee documents."
+        subtitle="Admins approve residents, issue invite codes and settle disputes. Every admin uploads their own ID proof, and BorrowVault checks it."
       />
       <form onSubmit={submit} className="space-y-4" noValidate>
         <Panel className="space-y-4">
@@ -179,10 +189,10 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
             Applying as resident of {membership.towerName} · {membership.flatNo}.
           </p>
           <Field
-            label="Your role on the committee"
+            label="Your role in the society"
             htmlFor="role"
             error={roleErr}
-            hint="e.g. Secretary, President, Treasurer, Committee member."
+            hint="e.g. Resident, Secretary, Treasurer, Committee member."
           >
             <Input id="role" maxLength={60} value={committeeRole} onChange={(e) => setCommitteeRole(e.target.value)} />
           </Field>
@@ -198,17 +208,11 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
 
         <Panel className="space-y-4">
           <div>
-            <h2 className="font-semibold">Documents</h2>
+            <h2 className="font-semibold">ID proof</h2>
             <p className="mt-1 text-sm text-fg-muted">
-              Only BorrowVault&apos;s verification team can open these. Your society&apos;s current admins don&apos;t see them.
+              Only BorrowVault&apos;s verification team can open it. Your society&apos;s current admins don&apos;t see it.
             </p>
           </div>
-          <DocPicker
-            kind="authorization"
-            slot={docs.authorizationKey}
-            onPick={(s) => setDocs((d) => ({ ...d, authorizationKey: s }))}
-            showMissing={tried}
-          />
           <DocPicker
             kind="idProof"
             slot={docs.idProofKey}
@@ -221,7 +225,7 @@ function BecomeAdmin({ societyId }: { societyId: string }) {
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={!!busy}>
             {busy ? <Loader2 className="animate-spin" /> : null}
-            {busy === "upload" ? "Uploading documents…" : busy === "send" ? "Sending…" : "Send for verification"}
+            {busy === "upload" ? "Uploading ID proof…" : busy === "send" ? "Sending…" : "Send for verification"}
           </Button>
           <Link href="/admin-requests" className="text-sm text-fg-muted hover:text-fg hover:underline">
             My requests

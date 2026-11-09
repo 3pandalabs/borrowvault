@@ -18,6 +18,8 @@ import { approvedMembership, assertArbiter, requireApprovedMember } from "../lib
 import { alreadySubmitted, conflict, DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
 import { withinGeofence } from "../lib/geo.js";
 import { notifyUsers, notifyPlatformAdmins, notifySocietyAdmins } from "../lib/notify.js";
+import { isPilot } from "../lib/pilot.js";
+import { societyTierOf } from "../lib/societyTier.js";
 import { depositProvider, netRefundDue, refundDueOnCancel, type DepositMode, type ResolutionOutcome } from "../payments/provider.js";
 import { priceFor, type Pricing } from "./pricing.js";
 import {
@@ -787,8 +789,20 @@ export async function raiseDispute(i: DisputeInput): Promise<{ state: BookingSta
     });
     return { state, disputeId: d.id };
   });
-  await notifyUsers([otherParty(b, role)], "A dispute was raised", "Respond within 72 hours; a society admin will then rule.", link(b.id));
-  await notifySocietyAdmins(b.societyId, "New BorrowVault dispute", `A ${i.category.replace("_", " ")} dispute needs a ruling.`, link(b.id));
+  // Pilot societies: only platform admins rule (lib/pilot.ts), so they're told now
+  // rather than at the 72 h escalation; society admins aren't asked.
+  // After the commit: a lookup failure must not fail (and retry) the activity.
+  const pilot = isPilot(await societyTierOf(b.societyId).catch(() => "verified"));
+  await notifyUsers(
+    [otherParty(b, role)],
+    "A dispute was raised",
+    `Respond within 72 hours; ${pilot ? "the BorrowVault team" : "a society admin"} will then rule.`,
+    link(b.id),
+  );
+  const subject = pilot ? "New dispute in a pilot society" : "New BorrowVault dispute";
+  const text = `A ${i.category.replace("_", " ")} dispute needs a ruling.`;
+  if (pilot) await notifyPlatformAdmins(subject, text, link(b.id));
+  else await notifySocietyAdmins(b.societyId, subject, text, link(b.id));
   return out;
 }
 

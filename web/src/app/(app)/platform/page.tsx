@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, ChevronDown, ChevronRight, FileCheck2, Loader2 } from "lucide-react";
+import { BadgeCheck, Building2, ChevronDown, ChevronRight, FileCheck2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -9,9 +9,10 @@ import { AdminRequestsQueue, PlatformSocietyAdmins } from "@/components/platform
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createSociety, errorMessage, listPlatformSocieties } from "@/lib/api";
+import { createSociety, errorMessage, listPlatformSocieties, verifySociety } from "@/lib/api";
 import { useAction, useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
+import type { Society } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -70,6 +71,37 @@ function Platform() {
   );
 }
 
+const DAY_MS = 24 * 3_600_000;
+
+function PilotRow({ s, onVerified }: { s: Society; onVerified: (s: Society) => void }) {
+  const action = useAction();
+  const [now] = useState(() => Date.now());
+  const days = Math.max(0, Math.floor((now - Date.parse(s.createdAt)) / DAY_MS));
+  return (
+    <li className="py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block truncate font-medium">{s.name}</span>
+          <span className="block text-fg-muted">
+            {`${s.city} · ${days === 1 ? "1 day" : `${days} days`} old · ${s.memberCount} of 50 members`}
+          </span>
+        </span>
+        <Button
+          size="sm"
+          disabled={action.busy}
+          onClick={() => {
+            if (!window.confirm(`Mark ${s.name} verified? This lifts the pilot limits.`)) return;
+            action.run(async () => onVerified(await verifySociety(s.id)), errorMessage);
+          }}
+        >
+          {action.busy ? <Loader2 className="animate-spin" /> : <BadgeCheck />} Mark verified
+        </Button>
+      </div>
+      <ErrorText>{action.error}</ErrorText>
+    </li>
+  );
+}
+
 function Societies() {
   const [form, setForm] = useState({ name: "", city: "", lat: "", lng: "", radius: "300", email: "" });
   const societies = useAsync(listPlatformSocieties, "platform-societies");
@@ -86,8 +118,28 @@ function Societies() {
     (form.radius && (!Number.isInteger(radius) || radius < 50 || radius > 5000) && "Radius: whole metres, 50 to 5,000.") ||
     null;
 
+  const pilots = (societies.data ?? []).filter((s) => s.tier === "pilot");
+
   return (
     <div className="mx-auto max-w-3xl">
+      {pilots.length ? (
+        <Panel className="mb-4">
+          <PanelTitle aside={<span className="text-xs text-fg-muted">{pilots.length} pilot</span>}>Pilot societies</PanelTitle>
+          <p className="mb-3 text-sm text-fg-muted">
+            Pilots allow up to 50 members and values up to ₹5,000, and BorrowVault rules their disputes. Mark one verified when
+            you trust it. That lifts the limits.
+          </p>
+          <ul className="divide-y divide-line">
+            {pilots.map((s) => (
+              <PilotRow
+                key={s.id}
+                s={s}
+                onVerified={(v) => societies.setData((societies.data ?? []).map((x) => (x.id === v.id ? v : x)))}
+              />
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
       <Panel>
         <PanelTitle aside={societies.data ? <span className="text-xs text-fg-muted">{societies.data.length} total</span> : null}>
           All societies
@@ -108,6 +160,8 @@ function Societies() {
                     <span className="truncate font-medium">{s.name}</span>
                     <span className="text-fg-muted">{s.city}</span>
                     <Badge variant={s.status === "live" ? "good" : "muted"}>{s.status}</Badge>
+                    {s.tier === "pilot" ? <Badge variant="warn">pilot</Badge> : null}
+                    <span className="text-xs text-fg-muted">{`${s.memberCount} members`}</span>
                     <span className="hidden text-xs text-fg-muted sm:inline">
                       {s.settings?.depositMode === "p2p" ? "P2P deposits" : "Declared deposits"} · {s.radiusM} m
                     </span>
@@ -135,8 +189,8 @@ function Societies() {
       <Panel className="mt-4">
         <PanelTitle>Create a society directly</PanelTitle>
         <p className="mb-4 text-sm text-fg-muted">
-          For staff use only. Societies normally register themselves through a verified admin request (the Admin requests
-          tab), which checks the committee&apos;s documents first.
+          For staff use only. It creates a verified society straight away. Societies normally register themselves through
+          an admin request (the Admin requests tab) and start as pilots.
         </p>
         <form
           className="space-y-4"

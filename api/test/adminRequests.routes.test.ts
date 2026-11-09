@@ -118,12 +118,12 @@ describe("POST /admin-requests validation", () => {
       method: "POST",
       url: "/admin-requests",
       headers: auth,
-      payload: join({ authorizationKey: adminDocKey(OTHER, "application/pdf"), idProofKey: adminDocKey(ME, "image/png") }),
+      payload: join({ idProofKey: adminDocKey(OTHER, "image/png") }),
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().code).toBe("VALIDATION");
   });
-  it("400 when new_society lacks the RWA registration certificate", async () => {
+  it("400 when new_society lacks the residence proof (an old-style authorisation letter is refused)", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/admin-requests",
@@ -151,7 +151,7 @@ describe("POST /admin-requests validation", () => {
       method: "POST",
       url: "/admin-requests",
       headers: auth,
-      payload: join({ authorizationKey: adminDocKey(ME, "application/pdf"), idProofKey: adminDocKey(ME, "image/png") }),
+      payload: join({ idProofKey: adminDocKey(ME, "image/png") }),
     });
     expect(res.statusCode).toBe(404);
   });
@@ -161,7 +161,7 @@ describe("POST /admin-requests validation", () => {
       method: "POST",
       url: "/admin-requests",
       headers: auth,
-      payload: join({ authorizationKey: adminDocKey(ME, "application/pdf"), idProofKey: adminDocKey(ME, "image/png") }),
+      payload: join({ idProofKey: adminDocKey(ME, "image/png") }),
     });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({ error: "already_admin", code: "CONFLICT" });
@@ -174,7 +174,7 @@ describe("POST /admin-requests validation", () => {
       method: "POST",
       url: "/admin-requests",
       headers: auth,
-      payload: join({ authorizationKey: adminDocKey(ME, "application/pdf"), idProofKey: adminDocKey(ME, "image/png") }),
+      payload: join({ idProofKey: adminDocKey(ME, "image/png") }),
     });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({ error: "request_pending", code: "CONFLICT" });

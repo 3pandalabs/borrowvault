@@ -10,6 +10,8 @@ import { bookings, listings, users, type ChecklistItem } from "../db/schema.js";
 import { approvedMembership, approvedSocietyIds, requireApprovedMember, unitLabels } from "../lib/authz.js";
 import { CATEGORIES, CATEGORY_BY_KEY } from "../lib/categories.js";
 import { forbidden, invalid, notFound } from "../lib/errors.js";
+import { assertPilotListingValues } from "../lib/pilot.js";
+import { societyTierOf } from "../lib/societyTier.js";
 import { parseKey, presignDownload } from "../plugins/r2.js";
 
 const uuid = z.string().uuid();
@@ -203,6 +205,7 @@ export async function listingRoutes(fastify: FastifyInstance) {
     const [u] = await db.select({ upiVpa: users.upiVpa }).from(users).where(eq(users.id, me));
     if (!u?.upiVpa) throw invalid("add your UPI ID to your profile before lending");
     const l = normalise(input, me);
+    assertPilotListingValues(await societyTierOf(societyId), l);
     const [row] = await db
       .insert(listings)
       .values({
@@ -244,6 +247,10 @@ export async function listingRoutes(fastify: FastifyInstance) {
       } as ListingInput,
       me,
     );
+    // Only when the patch touches a capped value, so pausing/archiving always works.
+    if (patch.depositPaise !== undefined || patch.replacementValuePaise !== undefined) {
+      assertPilotListingValues(await societyTierOf(current.societyId), merged);
+    }
     // Existing bookings keep their frozen checklist/slot snapshots.
     const [row] = await db
       .update(listings)

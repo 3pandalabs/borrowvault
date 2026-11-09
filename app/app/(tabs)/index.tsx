@@ -50,6 +50,7 @@ export default function Browse() {
         ) : (
           <Text style={s.society}>
             <Ionicons name="business" size={14} color={colors.accent} /> {approved[0]?.societyName}
+            {approved[0]?.societyTier === "pilot" ? " · Pilot society" : ""}
           </Text>
         )}
         <View style={s.segment}>

@@ -136,6 +136,11 @@ export default function HomePage() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">{m.societyName}</p>
+                      {m.societyTier === "pilot" ? (
+                        <p className="text-xs text-fg-muted" title="A new society on BorrowVault, with some limits until it is verified.">
+                          Pilot society
+                        </p>
+                      ) : null}
                       <p className="text-sm text-fg-muted">
                         {m.towerName} · {m.flatNo} · {m.occupancy}
                       </p>
@@ -158,7 +163,7 @@ export default function HomePage() {
                       href={`/admin-requests/new?societyId=${m.societyId}`}
                       className="mt-2 block text-xs text-fg-muted hover:text-fg hover:underline"
                     >
-                      On the committee? Become an admin
+                      Want to help run it? Become an admin
                     </Link>
                   ) : null}
                 </li>

@@ -4,7 +4,7 @@ import { Building, Check, Copy, FileText, Flag, Gavel, KeyRound, Loader2, MapPin
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { SocietyAdminsList } from "@/components/adminRequests";
+import { PilotBadge, PilotLimits, SocietyAdminsList } from "@/components/adminRequests";
 import { EmptyState, ErrorText, Field, LoadError, Loading, PageHeader, Panel, PanelTitle, selectClass, StateBadge } from "@/components/common";
 import { DISPUTE_CATEGORY } from "@/components/disputes";
 import { MessageReports } from "@/components/messageReports";
@@ -47,6 +47,7 @@ function Admin() {
   // Platform admins needn't be members; fetch the name for the header.
   const society = useAsync(() => api.getSociety(societyId), !membership && user.isPlatformAdmin ? `society:${societyId}` : null);
   const canAdmin = !!membership || user.isPlatformAdmin;
+  const tier = membership?.societyTier ?? society.data?.tier;
   // One small call for the tab badge (max 100 by contract).
   const openReports = useAsync(() => api.adminMessageReports(societyId, "open"), canAdmin ? `open-reports:${societyId}` : null);
   const openReportCount = openReports.data?.length ?? 0;
@@ -55,7 +56,7 @@ function Admin() {
     return (
       <EmptyState
         title="You're not an admin of this society"
-        body="Society admins are verified by BorrowVault. If you're on the committee, apply from your account with your committee's authorisation letter."
+        body="Society admins are verified by BorrowVault. If you live here, you can apply with your ID proof, or ask an admin to nominate you."
         action={
           <>
             <Link href={`/admin-requests/new?societyId=${societyId}`}>
@@ -74,7 +75,16 @@ function Admin() {
 
   return (
     <>
-      <PageHeader title={membership?.societyName ?? society.data?.name ?? "Society admin"} subtitle="Society admin console" />
+      <PageHeader
+        title={membership?.societyName ?? society.data?.name ?? "Society admin"}
+        subtitle="Society admin console"
+        actions={tier === "pilot" ? <PilotBadge /> : null}
+      />
+      {tier === "pilot" ? (
+        <div className="mb-5">
+          <PilotLimits />
+        </div>
+      ) : null}
       <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
@@ -99,7 +109,7 @@ function Admin() {
       {tab === "disputes" ? <Disputes societyId={societyId} /> : null}
       {tab === "message-reports" ? <MessageReports societyId={societyId} onChanged={openReports.reload} /> : null}
       {tab === "settings" ? <SocietySettings societyId={societyId} /> : null}
-      {tab === "admins" ? <Admins societyId={societyId} /> : null}
+      {tab === "admins" ? <Admins societyId={societyId} canNominate={!!membership} /> : null}
     </>
   );
 }
@@ -592,16 +602,16 @@ function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Soc
 
 // ---------- admins ----------
 
-function Admins({ societyId }: { societyId: string }) {
+function Admins({ societyId, canNominate }: { societyId: string; canNominate: boolean }) {
   const { user } = useSession();
   const admins = useAsync(() => api.societyAdmins(societyId), `admins:${societyId}`);
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl space-y-4">
       <Panel>
         <PanelTitle>Society admins</PanelTitle>
         <p className="mb-3 text-sm text-fg-muted">
-          To add an admin, the resident applies from their account; BorrowVault verifies their documents. Only BorrowVault
-          can remove an admin.
+          To add an admin, nominate a resident below, or the resident applies from their account. Every admin uploads their
+          own ID proof. Only BorrowVault can remove an admin.
         </p>
         {admins.error ? (
           <LoadError error={admins.error} onRetry={admins.reload} />
@@ -620,6 +630,126 @@ function Admins({ societyId }: { societyId: string }) {
           </p>
         ) : null}
       </Panel>
+      <Nominations societyId={societyId} canNominate={canNominate} onApproved={admins.reload} />
     </div>
   );
+}
+
+const NOMINATION_STATUS: Record<string, string> = {
+  nominated: "Waiting for them to accept",
+  pending: "Accepted, in review",
+  approved: "Now an admin",
+  rejected: "Not approved",
+  withdrawn: "Withdrawn by them",
+  declined: "Declined",
+  cancelled: "Cancelled",
+};
+
+function Nominations({ societyId, canNominate, onApproved }: { societyId: string; canNominate: boolean; onApproved: () => void }) {
+  const { user } = useSession();
+  const list = useAsync(() => api.societyNominations(societyId), `nominations:${societyId}`);
+  const residents = useAsync(
+    () => api.adminMemberships(societyId, "approved"),
+    `approved-members:${societyId}`,
+  );
+  const [pick, setPick] = useState("");
+  const nominate = useAction();
+  const cancel = useAction();
+
+  const open = new Set(
+    (list.data ?? []).filter((n) => n.status === "nominated" || n.status === "pending").map((n) => n.requesterId),
+  );
+  const candidates = (residents.data ?? []).filter(
+    (m) => m.role !== "society_admin" && m.user.id !== user.id && !open.has(m.user.id),
+  );
+
+  return (
+    <Panel>
+      <PanelTitle>Co-admin nominations</PanelTitle>
+      <p className="mb-3 text-sm text-fg-muted">
+        Nominate an approved resident you trust. They accept by uploading their ID proof. They become an admin 48 hours
+        later, unless BorrowVault rejects it first.
+      </p>
+      {canNominate ? (
+        <form
+          className="mb-4 flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!pick) return;
+            nominate
+              .run(async () => {
+                await api.nominateCoAdmin(societyId, { membershipId: pick });
+                setPick("");
+                list.reload();
+              }, api.errorMessage);
+          }}
+        >
+          <Field label="Resident" htmlFor="nominee">
+            <select id="nominee" className={selectClass} value={pick} onChange={(e) => setPick(e.target.value)}>
+              <option value="">{residents.data ? (candidates.length ? "Pick a resident" : "No residents to nominate") : "Loading…"}</option>
+              {candidates.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {`${m.user.displayName} · ${m.towerName} ${m.flatNo}`}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Button type="submit" disabled={!pick || nominate.busy}>
+            {nominate.busy ? <Loader2 className="animate-spin" /> : <Plus />} Nominate
+          </Button>
+        </form>
+      ) : (
+        <p className="mb-4 text-xs text-fg-muted">Only this society&apos;s own admins can nominate co-admins.</p>
+      )}
+      <ErrorText>{nominate.error ?? cancel.error}</ErrorText>
+      {list.error ? (
+        <LoadError error={list.error} onRetry={list.reload} />
+      ) : !list.data ? (
+        <Loading />
+      ) : list.data.length === 0 ? (
+        <p className="text-sm text-fg-muted">No nominations yet.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {list.data.map((n) => {
+            const canCancel = (n.status === "nominated" || n.status === "pending") && n.nominatedBy?.id === user.id;
+            return (
+              <li key={n.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium">{n.requesterId === user.id ? "You" : nomineeName(n.requesterId, residents.data)}</p>
+                  <p className="text-fg-muted">
+                    {`${NOMINATION_STATUS[n.status] ?? n.status} · nominated by ${n.nominatedBy?.displayName ?? "an admin"} on ${formatIST(n.createdAt, { time: false })}`}
+                  </p>
+                  {n.status === "pending" && n.autoApproveAt ? (
+                    <p className="text-xs text-amber-700">{`Becomes an admin on ${formatIST(n.autoApproveAt)}`}</p>
+                  ) : null}
+                </div>
+                {canCancel ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={cancel.busy}
+                    onClick={() => {
+                      if (!window.confirm("Cancel this nomination?")) return;
+                      cancel.run(async () => {
+                        await api.cancelNomination(n.id);
+                        list.reload();
+                        onApproved();
+                      }, api.errorMessage);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/** The nominee's name from the approved-members list (AdminRequest only carries their id). */
+function nomineeName(userId: string, members: AdminMembership[] | null | undefined): string {
+  return members?.find((m) => m.user.id === userId)?.user.displayName ?? "A resident";
 }

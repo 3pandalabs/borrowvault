@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import { env } from "../env.js";
+import { lifetimeTotals } from "../lib/platformStats.js";
 import { cpuPercentOfOneCore, requestsLastHour } from "../metrics/collector.js";
 
 // Ops-only endpoint scraped server-side by admin.3pandalabs.com. Own bearer
@@ -69,6 +70,9 @@ export async function metricsRoutes(app: FastifyInstance) {
         (select count(*) from pg_stat_activity where datname = current_database())::int as connections
     `);
 
+    // Survive the 3-year purge: summed from platform_stats_daily (worker rollup).
+    const lifetime = await lifetimeTotals();
+
     const c = counts.rows[0];
     const d = database.rows[0];
     const mem = process.memoryUsage();
@@ -92,6 +96,9 @@ export async function metricsRoutes(app: FastifyInstance) {
         conversations: c.conversations,
         messagesLast24h: c.messages_last_24h,
         openMessageReports: c.open_message_reports,
+        lifetimeBookingsCreated: lifetime.bookingsCreated,
+        lifetimeBookingsCompleted: lifetime.bookingsCompleted,
+        lifetimeListingsCreated: lifetime.listingsCreated,
       },
       traffic: { apiRequestsLastHour: requestsLastHour() },
       process: { rssBytes: mem.rss, heapUsedBytes: mem.heapUsed, cpuPercentOfOneCore: cpuPercentOfOneCore() },

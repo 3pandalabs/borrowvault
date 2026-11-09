@@ -2,6 +2,7 @@ import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { sweepDueNominations } from "../lib/adminApproval.js";
+import { rollupPlatformStats } from "../lib/platformStats.js";
 import * as activities from "./activities/index.js";
 import { temporalEnv } from "./env.js";
 
@@ -29,8 +30,26 @@ function startNominationSweep(): void {
   setInterval(tick, NOMINATION_SWEEP_MS).unref();
 }
 
+// Lifetime stats (api/ROUTES.md "Lifetime stats"): non-personal per-society,
+// per-day counts that survive the 3-year purge. Same pattern as the
+// nomination sweep: a plain idempotent DB upsert. It runs hourly so today's row
+// stays fresh; each run recomputes only the last 3 days (and backfills
+// everything on the first run).
+const STATS_ROLLUP_MS = 60 * 60_000;
+
+function startStatsRollup(): void {
+  const tick = () => {
+    void rollupPlatformStats().then((r) => {
+      if (r?.backfill) console.log(`borrowvault-worker: platform stats backfilled (${r.rows} row(s))`);
+    });
+  };
+  tick();
+  setInterval(tick, STATS_ROLLUP_MS).unref();
+}
+
 async function run() {
   startNominationSweep();
+  startStatsRollup();
   const connection = await NativeConnection.connect({ address: temporalEnv.address });
   try {
     const worker = await Worker.create({

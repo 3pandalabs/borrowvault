@@ -114,7 +114,9 @@ export type AdminRequest = {
 // ---- Listings ----
 
 export type ListingKind = "item" | "skill";
-export type ListingStatus = "active" | "paused" | "archived";
+export type ListingStatus = "active" | "paused" | "archived" | "removed";
+/** Statuses an owner can set with PATCH (an admin sets "removed"). */
+export type OwnerListingStatus = "active" | "paused" | "archived";
 export type ChecklistType = "bool" | "percent" | "choice" | "count" | "text";
 
 /** `id` matches ^[a-z0-9_]{1,40}$; `choice` needs ≥2 options. */
@@ -149,7 +151,7 @@ export type ListingInput = {
   photoKeys: string[];
 };
 
-export type ListingPatch = Partial<Omit<ListingInput, "societyId">> & { status?: ListingStatus };
+export type ListingPatch = Partial<Omit<ListingInput, "societyId">> & { status?: OwnerListingStatus };
 
 export type PartyInfo = {
   id: string;
@@ -182,6 +184,8 @@ export type Listing = ListingSummary & {
   requiredPhotoSlots: string[];
   photoKeys: string[];
   photoUrls: string[];
+  /** Set only when status is "removed" (only the owner sees a removed listing). */
+  removal: { note: string; removedAt: string } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -368,6 +372,8 @@ export type Conversation = {
   borrower: PartyInfo;
   myRole: "owner" | "borrower" | "admin";
   canSend: boolean;
+  /** The caller has blocked the other participant (false for admins). */
+  blockedByMe: boolean;
   /** For the caller; 0 for admins. */
   unreadCount: number;
   /** Newest live booking of this listing by this borrower. */
@@ -406,3 +412,15 @@ export type Geo = { lat: number; lng: number; accuracyM: number; capturedAt: str
 
 /** Evidence MIME types the app captures (png is web-only for disputes). */
 export type MediaMime = "image/jpeg" | "video/mp4" | "video/quicktime";
+
+// ---- Account deletion, blocking, reports ----
+
+export type DeletionBlockerKind = "live_booking" | "open_dispute" | "unpaid_award" | "refund_owed";
+export type DeletionBlocker = { kind: DeletionBlockerKind; bookingId: string; listingTitle: string; state: BookingState };
+export type DeletionCheck = { canDelete: boolean; blockers: DeletionBlocker[] };
+
+export type BlockedUser = { user: { id: string; displayName: string }; createdAt: string };
+
+export type UserReportReason = "harassment" | "spam" | "scam" | "inappropriate" | "other";
+export type ListingReportReason = "prohibited_item" | "misleading" | "offensive" | "scam" | "other";
+export type ReportReceipt = { id: string; status: "open"; createdAt: string };

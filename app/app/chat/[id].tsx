@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { confirmBlock, doUnblock, ReportModal as ReportPersonModal, type ReportTarget } from "../../src/components/Safety";
 import { Button, ErrorText, Loading, P } from "../../src/components/ui";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useIsScreenFocused, usePolling } from "../../src/hooks/usePolling";
@@ -64,6 +65,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<Message | null>(null);
+  const [reportPerson, setReportPerson] = useState<ReportTarget | null>(null);
 
   // The ref is the source of truth for the poll cursor; state mirrors it for rendering.
   const confirmedRef = useRef<Message[]>([]);
@@ -215,7 +217,7 @@ export default function ChatScreen() {
     } catch (err) {
       // Keep the draft so nothing typed is lost.
       setSendError(chatError(err));
-      if (err instanceof ApiError && err.error === "conversation_closed") void refreshConv();
+      if (err instanceof ApiError && (err.error === "conversation_closed" || err.error === "blocked")) void refreshConv();
     } finally {
       setSending(false);
     }
@@ -247,6 +249,17 @@ export default function ChatScreen() {
   const openContext = () =>
     router.push(conv.activeBookingId ? `/booking/${conv.activeBookingId}` : `/listing/${conv.listing.id}`);
 
+  function openActions() {
+    const blocked = conv!.blockedByMe;
+    Alert.alert(other.displayName, undefined, [
+      blocked
+        ? { text: "Unblock", onPress: () => void doUnblock(other.id).then((ok) => { if (ok) void refreshConv(); }) }
+        : { text: "Block", style: "destructive", onPress: () => void confirmBlock(other).then((ok) => { if (ok) void refreshConv(); }) },
+      { text: "Report", onPress: () => setReportPerson({ type: "user", id: other.id, name: other.displayName }) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
   const n = codePointLength(draft.trim());
   const problem = messageProblem(draft);
 
@@ -255,6 +268,18 @@ export default function ChatScreen() {
       <Stack.Screen
         options={{
           title,
+          headerRight: isAdmin
+            ? undefined
+            : () => (
+                <Pressable
+                  onPress={openActions}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Block or report ${other.displayName}`}
+                >
+                  <Ionicons name="ellipsis-horizontal-circle-outline" size={24} color={colors.fg} />
+                </Pressable>
+              ),
           headerTitle: () => (
             <Pressable
               onPress={openContext}
@@ -369,7 +394,9 @@ export default function ChatScreen() {
               <Text style={s.readOnlyText}>
                 {isAdmin
                   ? "You're reading this chat as a society admin because a booking is in dispute. Admins can't send messages here."
-                  : "This chat is read-only. New messages need a booking from the last 7 days, or an open listing in a society you're a member of."}
+                  : conv.blockedByMe
+                    ? `You blocked ${other.displayName}. Unblock them to send messages again. Bookings you already have carry on.`
+                    : "This chat is read-only. New messages need a booking from the last 7 days, or an open listing in a society you're a member of."}
               </Text>
             </View>
           )}
@@ -377,6 +404,7 @@ export default function ChatScreen() {
       </KeyboardAvoidingView>
 
       <ReportModal message={reportTarget} onClose={() => setReportTarget(null)} />
+      <ReportPersonModal target={reportPerson} onClose={() => setReportPerson(null)} />
     </View>
   );
 }

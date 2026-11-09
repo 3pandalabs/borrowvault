@@ -58,11 +58,8 @@ export default function NewListing() {
   }
 
   async function addPhotos() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      action.setError("Allow photo access to add listing photos.");
-      return;
-    }
+    // The system photo picker needs no permission (Play photo/video policy):
+    // the user hands over only the photos they pick.
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsMultipleSelection: true,

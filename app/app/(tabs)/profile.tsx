@@ -4,7 +4,8 @@ import { Pressable, Switch, Text, View } from "react-native";
 import { Button, Card, Chip, ErrorText, Field, H2, KV, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
-import { listListings, listMyAdminRequests, updateListing, updateMe } from "../../src/lib/api";
+import { doUnblock } from "../../src/components/Safety";
+import { listBlocks, listListings, listMyAdminRequests, updateListing, updateMe } from "../../src/lib/api";
 import { formatDate } from "../../src/lib/format";
 import { priceLine } from "../../src/lib/labels";
 import { openWeb } from "../../src/lib/openWeb";
@@ -86,14 +87,20 @@ export default function Profile() {
               <KV k="Status" v={l.status} />
               {l.status === "active" ? <Chip label="Pause" onPress={() => void setStatus(l, "paused")} /> : null}
               {l.status === "paused" ? <Chip label="Resume" onPress={() => void setStatus(l, "active")} /> : null}
-              {l.status !== "archived" ? <Chip label="Archive" onPress={() => void setStatus(l, "archived")} /> : null}
+              {l.status === "active" || l.status === "paused" ? (
+                <Chip label="Archive" onPress={() => void setStatus(l, "archived")} />
+              ) : null}
+              {l.status === "removed" ? <Chip label="Removed by an admin" tone="bad" onPress={() => router.push(`/listing/${l.id}`)} /> : null}
             </View>
           </View>
         ))}
         <ErrorText>{save.error}</ErrorText>
       </Card>
 
+      <BlockedUsersCard userId={user.id} />
+
       <Button title="Sign out" variant="danger" onPress={() => void signOut()} />
+      <Button title="Delete account" variant="ghost" icon="trash-outline" onPress={() => router.push("/delete-account")} />
       <Text style={{ textAlign: "center", color: colors.fgMuted, fontSize: 12 }}>BorrowVault | by 3PandaLabs</Text>
     </Screen>
   );
@@ -254,6 +261,32 @@ function DetailsForm({ user }: { user: User }) {
       <ErrorText>{save.error}</ErrorText>
       {saved && !dirty ? <P style={{ color: colors.accent }}>Saved ✓</P> : null}
       <Button title="Save" onPress={onSave} busy={save.busy} disabled={!dirty || !!vpaError || !!phoneError || displayName.trim().length < 2} />
+    </Card>
+  );
+}
+
+/** People I blocked (GET /me/blocks), with Unblock. */
+function BlockedUsersCard({ userId }: { userId: string }) {
+  const blocks = useLoader(listBlocks, [userId]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function unblock(id: string) {
+    setBusyId(id);
+    if (await doUnblock(id)) await blocks.reload();
+    setBusyId(null);
+  }
+
+  return (
+    <Card>
+      <H2>Blocked users</H2>
+      {blocks.data?.length === 0 ? <P muted>{"You haven't blocked anyone."}</P> : null}
+      {blocks.data?.map((b) => (
+        <View key={b.user.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <Text style={{ color: colors.fg, flex: 1 }}>{b.user.displayName}</Text>
+          <Button title="Unblock" variant="secondary" busy={busyId === b.user.id} onPress={() => void unblock(b.user.id)} />
+        </View>
+      ))}
+      <ErrorText>{blocks.error}</ErrorText>
     </Card>
   );
 }

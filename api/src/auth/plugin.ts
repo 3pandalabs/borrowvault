@@ -29,8 +29,21 @@ export const authPlugin = fp(async (fastify) => {
   });
 });
 
+// Accounts deleted by this process. Their sessions are gone (refresh fails),
+// but an access token stays valid for up to 15 min; this refuses it at once.
+// In memory on purpose: borrowvault-api is one container, and after a restart
+// the token expiry bounds the window anyway.
+const deletedUserIds = new Set<string>();
+
+export function markUserDeleted(userId: string): void {
+  deletedUserIds.add(userId);
+}
+
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   if (!req.userId) {
     return reply.code(401).send({ error: "not_authenticated" });
+  }
+  if (deletedUserIds.has(req.userId)) {
+    return reply.code(401).send({ error: "account_deleted" });
   }
 }

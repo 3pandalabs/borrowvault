@@ -54,9 +54,10 @@ export function keepsChatOpen(b: BookingLite, now: number): boolean {
 }
 
 /**
- * Who may send. Either a booking between the two keeps the chat open, or the
- * listing isn't archived AND the sender is (still) an approved member of the
- * society. Admin viewers never send.
+ * Who may send. Never while either participant has blocked the other.
+ * Otherwise either a booking between the two keeps the chat open, or the
+ * listing isn't archived/removed AND the sender is (still) an approved member
+ * of the society. Admin viewers never send.
  */
 export function canSend(i: {
   role: "owner" | "borrower" | "admin";
@@ -64,10 +65,11 @@ export function canSend(i: {
   senderApprovedMember: boolean;
   bookings: BookingLite[];
   now: number;
+  blocked?: boolean;
 }): boolean {
-  if (i.role === "admin") return false;
+  if (i.role === "admin" || i.blocked) return false;
   if (i.bookings.some((b) => keepsChatOpen(b, i.now))) return true;
-  return i.listingStatus !== "archived" && i.senderApprovedMember;
+  return i.listingStatus !== "archived" && i.listingStatus !== "removed" && i.senderApprovedMember;
 }
 
 /** Newest live booking (the one a chat header links to), or null. */

@@ -15,6 +15,7 @@ import {
   type ChecklistAnswer,
 } from "../db/schema.js";
 import { approvedMembership, assertArbiter, requireApprovedMember } from "../lib/authz.js";
+import { blockedEitherWay } from "../lib/blocks.js";
 import { alreadySubmitted, conflict, DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
 import { withinGeofence } from "../lib/geo.js";
 import { notifyUsers, notifyPlatformAdmins, notifySocietyAdmins } from "../lib/notify.js";
@@ -130,6 +131,8 @@ export async function createBooking(i: {
   if (l.status !== "active") throw invalid("this listing is not available");
   if (l.ownerId === i.borrowerId) throw invalid("you cannot borrow your own listing");
   if (!(await approvedMembership(l.ownerId, l.societyId))) throw invalid("this listing is not available");
+  // Either side's block stops new bookings (existing ones carry on).
+  if (await blockedEitherWay(i.borrowerId, l.ownerId)) throw forbidden("blocked");
 
   const [borrower] = await db.select().from(users).where(eq(users.id, i.borrowerId));
   if (borrower.trustScore < BORROWING_PAUSED_BELOW) {

@@ -57,6 +57,13 @@
       "when": 1794244289989,
       "tag": "0007_lifetime_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794254181445,
+      "tag": "0008_play_policy",
+      "breakpoints": true
     }
   ]
 }

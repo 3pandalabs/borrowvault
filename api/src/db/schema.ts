@@ -52,9 +52,33 @@ export const users = pgTable(
     trustDisputesLost: integer("trust_disputes_lost").notNull().default(0),
     // Chat push notifications on/off (PATCH /me chatPushEnabled). Default on.
     chatPushEnabled: boolean("chat_push_enabled").notNull().default(true),
+    // Account deletion (POST /me/delete): the row stays (shared records point
+    // at it) but is anonymised; the email becomes a unique tombstone so the
+    // real address can sign up again.
+    deletedAt: ts("deleted_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("users_phone").on(t.phone)],
+);
+
+// Either side's block stops chat sends, new conversations, new bookings and
+// browse visibility between the two (api/ROUTES.md "Users: blocking and reporting").
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => users.id),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: "user_blocks_pk", columns: [t.blockerId, t.blockedId] }),
+    index("user_blocks_blocked").on(t.blockedId),
+    check("user_blocks_distinct", sql`${t.blockerId} <> ${t.blockedId}`),
+  ],
 );
 
 // Expo push tokens (POST/DELETE /me/push-tokens). One row per device token;
@@ -250,6 +274,8 @@ export const adminRequests = pgTable(
     // Required on every request except a nomination the nominee hasn't accepted.
     idProofKey: text("id_proof_key"),
     residenceProofKey: text("residence_proof_key"), // new_society
+    // Set when account deletion cleared the document keys (and deleted the files).
+    docsPurgedAt: ts("docs_purged_at"),
     // nominate_admin only
     nominatedBy: uuid("nominated_by").references(() => users.id),
     nomineeAcceptedAt: ts("nominee_accepted_at"),
@@ -289,9 +315,10 @@ export const adminRequests = pgTable(
       sql`(${t.kind} in ('join_admin', 'nominate_admin') and ${t.societyId} is not null) or (${t.kind} = 'new_society' and ${t.societyName} is not null and ${t.city} is not null and ${t.address} is not null and ${t.centerLat} is not null and ${t.centerLng} is not null and ${t.radiusM} is not null and ${t.towerName} is not null and ${t.flatNo} is not null and ${t.occupancy} in ('owner', 'tenant', 'family'))`,
     ),
     check("admin_requests_nominator", sql`(${t.kind} = 'nominate_admin') = (${t.nominatedBy} is not null)`),
+    // v2 (0008): a deleted account's documents are purged, so the key may be null then.
     check(
-      "admin_requests_id_proof",
-      sql`${t.idProofKey} is not null or (${t.kind} = 'nominate_admin' and ${t.status} in ('nominated', 'declined', 'cancelled'))`,
+      "admin_requests_id_proof_v2",
+      sql`${t.idProofKey} is not null or ${t.docsPurgedAt} is not null or (${t.kind} = 'nominate_admin' and ${t.status} in ('nominated', 'declined', 'cancelled'))`,
     ),
   ],
 );
@@ -331,7 +358,11 @@ export const listings = pgTable(
     checklistTemplate: jsonb("checklist_template").$type<ChecklistItem[]>().notNull().default([]),
     requiredPhotoSlots: jsonb("required_photo_slots").$type<string[]>().notNull().default([]),
     photoKeys: jsonb("photo_keys").$type<string[]>().notNull().default([]),
-    status: text("status").notNull().default("active"), // active | paused | archived
+    status: text("status").notNull().default("active"), // active | paused | archived | removed (admin takedown)
+    // Admin takedown (POST /admin/listings/:id/remove). Set only with status "removed".
+    removedBy: uuid("removed_by").references(() => users.id),
+    removedAt: ts("removed_at"),
+    removalNote: text("removal_note"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
@@ -741,6 +772,71 @@ export const messageReports = pgTable(
     uniqueIndex("message_reports_one_per_reporter").on(t.messageId, t.reporterId),
     index("message_reports_society_status").on(t.societyId, t.status, t.createdAt),
     check("message_reports_status", sql`${t.status} in ('open', 'reviewed')`),
+  ],
+);
+
+// User and listing reports (api/ROUTES.md "Users: blocking and reporting",
+// "Reports review"). Reviewed in the society console's Reports page.
+export const USER_REPORT_REASONS = ["harassment", "spam", "scam", "inappropriate", "other"] as const;
+export const LISTING_REPORT_REASONS = ["prohibited_item", "misleading", "offensive", "scam", "other"] as const;
+
+export const userReports = pgTable(
+  "user_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id),
+    reportedId: uuid("reported_id")
+      .notNull()
+      .references(() => users.id),
+    societyId: uuid("society_id")
+      .notNull()
+      .references(() => societies.id),
+    reason: text("reason", { enum: USER_REPORT_REASONS }).notNull(),
+    details: text("details"),
+    status: text("status", { enum: ["open", "reviewed", "dismissed"] }).notNull().default("open"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: ts("reviewed_at"),
+    reviewNote: text("review_note"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("user_reports_society_status").on(t.societyId, t.status, t.createdAt),
+    uniqueIndex("user_reports_one_open").on(t.reporterId, t.reportedId).where(sql`status = 'open'`),
+    check("user_reports_reason", sql`${t.reason} in ('harassment', 'spam', 'scam', 'inappropriate', 'other')`),
+    check("user_reports_status", sql`${t.status} in ('open', 'reviewed', 'dismissed')`),
+    check("user_reports_distinct", sql`${t.reporterId} <> ${t.reportedId}`),
+  ],
+);
+
+export const listingReports = pgTable(
+  "listing_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    societyId: uuid("society_id")
+      .notNull()
+      .references(() => societies.id),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id),
+    reason: text("reason", { enum: LISTING_REPORT_REASONS }).notNull(),
+    details: text("details"),
+    status: text("status", { enum: ["open", "dismissed", "actioned"] }).notNull().default("open"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: ts("reviewed_at"),
+    reviewNote: text("review_note"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("listing_reports_society_status").on(t.societyId, t.status, t.createdAt),
+    index("listing_reports_listing").on(t.listingId),
+    uniqueIndex("listing_reports_one_open").on(t.listingId, t.reporterId).where(sql`status = 'open'`),
+    check("listing_reports_reason", sql`${t.reason} in ('prohibited_item', 'misleading', 'offensive', 'scam', 'other')`),
+    check("listing_reports_status", sql`${t.status} in ('open', 'dismissed', 'actioned')`),
   ],
 );
 

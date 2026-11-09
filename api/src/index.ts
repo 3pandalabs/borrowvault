@@ -4,6 +4,7 @@ import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fas
 import { authPlugin } from "./auth/plugin.js";
 import { env } from "./env.js";
 import { DomainError } from "./lib/errors.js";
+import { loggerOptions } from "./lib/logRedact.js";
 import { recordRequest, startCpuSampler } from "./metrics/collector.js";
 import { adminRoutes } from "./routes/admin.js";
 import { adminRequestRoutes } from "./routes/adminRequests.js";
@@ -12,11 +13,14 @@ import { bookingRoutes } from "./routes/bookings.js";
 import { chatRoutes } from "./routes/chat.js";
 import { listingRoutes } from "./routes/listings.js";
 import { metricsRoutes } from "./routes/metrics.js";
+import { moderationRoutes } from "./routes/moderation.js";
 import { pushRoutes } from "./routes/push.js";
 import { societyRoutes } from "./routes/societies.js";
+import { userRoutes } from "./routes/users.js";
 
 const app = Fastify({
-  logger: true,
+  // Paths only: query strings (search terms, storage keys) never reach the logs.
+  logger: loggerOptions,
   // Traefik (and Cloudflare) sit in front; without this req.ip is the proxy
   // and rate limiting would bucket every caller together.
   trustProxy: true,
@@ -65,6 +69,8 @@ await app.register(listingRoutes);
 await app.register(bookingRoutes);
 await app.register(chatRoutes);
 await app.register(pushRoutes);
+await app.register(userRoutes);
+await app.register(moderationRoutes);
 await app.register(metricsRoutes);
 
 app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((err) => {

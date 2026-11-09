@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, ilike, sql } from "drizzle-orm";
+import { and, asc, eq, gt, ilike, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -24,7 +24,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
 
   app.get("/me", { preHandler: requireAuth }, async (req) => {
     const [u] = await db.select().from(users).where(eq(users.id, req.userId!)).limit(1);
-    if (!u) throw notFound();
+    if (!u || u.deletedAt) throw notFound();
     // Backstop for the worker's auto-approve sweep, so a nominee sees their new role.
     await sweepDueNominations({ requesterId: u.id });
     return { user: userView(u), memberships: await membershipsOf(u.id) };
@@ -53,7 +53,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
           ...(patch.upiVpa !== undefined ? { upiVpa: patch.upiVpa } : {}),
           ...(patch.chatPushEnabled !== undefined ? { chatPushEnabled: patch.chatPushEnabled } : {}),
         })
-        .where(eq(users.id, req.userId!))
+        .where(and(eq(users.id, req.userId!), isNull(users.deletedAt)))
         .returning();
       if (!u) throw notFound();
       return { user: userView(u) };

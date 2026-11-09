@@ -362,4 +362,36 @@ A report doesn't give the admin access to the rest of the conversation; only a D
 ## Ops
 
 | GET | `/health` | → `{ok: true, commit, startedAt}` |
-| GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"`. `counts` keys: `users, liveSocieties, pilotSocieties, approvedMembers, pendingMembers, adminRequestsPending, activeListings, bookings, openBookings, completedBookings, openDisputes, activeSessions, conversations, messagesLast24h, openMessageReports` |
+| GET | `/metrics` | `Authorization: Bearer <METRICS_TOKEN>`. Uses the shared envelope; `collector.ts` is copied verbatim from evitevault; app key `"borrowvault"`. `counts` keys: `users, liveSocieties, pilotSocieties, approvedMembers, pendingMembers, adminRequestsPending, activeListings, bookings, openBookings, completedBookings, openDisputes, activeSessions, conversations, messagesLast24h, openMessageReports, lifetimeBookingsCreated, lifetimeBookingsCompleted, lifetimeListingsCreated`. The three `lifetime*` keys are sums over `platform_stats_daily` (see "Lifetime stats"), so they survive the 3-year purge and lag the live tables by up to an hour. |
+
+### Lifetime stats (`platform_stats_daily`)
+
+Non-personal activity counts that outlive the personal data they were counted from (Privacy Policy, "Statistics we keep"). One row per **IST calendar day** per society; primary key `(day, society_id)`.
+
+| Column | Meaning |
+|---|---|
+| `day` | `date`, Asia/Kolkata |
+| `society_id` | `uuid`, **no foreign key**: the counts must survive the society row. A society is an organisation, not a person, and per-society counts are needed to judge pilots |
+| `bookings_created` | bookings created that day |
+| `bookings_completed` | bookings that first reached `COMPLETED` or `RESOLVED` that day (one finished lending = one finished borrowing) |
+| `disputes_raised` | disputes raised that day |
+| `listings_created` | listings created that day |
+| `listings_active` | gauge: active listings at the last rollup that day. Null on backfilled days |
+| `members` | gauge: approved memberships at the last rollup that day. Null on backfilled days |
+| `updated_at` | when the rollup last wrote the row |
+
+Counts only: no user ids, names, flats, text or keys, ever. Don't add a column that could identify a person.
+
+**Rollup.** The worker process (`borrowvault-worker`) runs it at start and then hourly (`api/src/lib/platformStats.ts`). Each run recomputes the event counts for the last 3 IST days from the live tables and upserts them, then upserts today's gauges for every live society. It is idempotent: re-running gives the same rows. If the table is empty (first run), it backfills every day from the oldest data instead. Days older than the 3-day window are never rewritten, so purging old personal data can't lower them. Lifetime totals = `sum(...)` over all rows.
+
+## Data retention (Privacy Policy section 7)
+
+Rule: personal data is kept for **3 years after the person's last activity** (the later of their last sign-in and the end of their last booking, dispute or admin request; closing the account counts as activity), then deleted. Logs and database backups roll over at 30 days.
+
+**No purge job exists yet. One must ship before 2029-11** (3 years after launch, when the first data qualifies). It must:
+
+- **Delete** for each user past the rule: the `users` row and its sessions, reset tokens and push tokens; their memberships and proof files; their admin requests and `admin-docs/` files; their listings and listing photos; and, for bookings where **both** parties are past the rule, the booking with its events, payments, inspections and evidence media (R2 objects too), disputes, dispute messages, ratings, conversations, messages and message reports.
+- **Anonymise, not delete,** shared records whose other party is still active: replace the departed user with a tombstone (no name, email, phone, VPA, flat) so the active resident's history still makes sense.
+- **Hold** anything tied to an open dispute, an unpaid award or a legal hold until that ends.
+- **Keep** `platform_stats_daily` untouched, and `societies` rows (organisations, not people). Only purge data older than the rollup's 3-day window, which the 3-year rule always is.
+- Confirm the Coolify backup schedule keeps no more than 30 days of backups, so purged data leaves backups within 30 days.

@@ -3,12 +3,14 @@ import {
   bigint,
   boolean,
   check,
+  date,
   doublePrecision,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -740,4 +742,26 @@ export const messageReports = pgTable(
     index("message_reports_society_status").on(t.societyId, t.status, t.createdAt),
     check("message_reports_status", sql`${t.status} in ('open', 'reviewed')`),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// Lifetime stats (api/ROUTES.md "Lifetime stats"). Counts only: no user ids,
+// no text. No FK on society_id: the counts must outlive the 3-year purge of
+// personal data and any society row.
+// ---------------------------------------------------------------------------
+
+export const platformStatsDaily = pgTable(
+  "platform_stats_daily",
+  {
+    day: date("day").notNull(), // Asia/Kolkata calendar day
+    societyId: uuid("society_id").notNull(),
+    bookingsCreated: integer("bookings_created").notNull().default(0),
+    bookingsCompleted: integer("bookings_completed").notNull().default(0),
+    disputesRaised: integer("disputes_raised").notNull().default(0),
+    listingsCreated: integer("listings_created").notNull().default(0),
+    listingsActive: integer("listings_active"), // gauge; null on backfilled days
+    members: integer("members"), // gauge; null on backfilled days
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "platform_stats_daily_pk", columns: [t.day, t.societyId] })],
 );

@@ -50,6 +50,13 @@
       "when": 1794242581335,
       "tag": "0006_pilot_and_nominations",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794244289989,
+      "tag": "0007_lifetime_stats",
+      "breakpoints": true
     }
   ]
 }

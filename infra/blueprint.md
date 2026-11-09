@@ -79,7 +79,7 @@ What we can honestly guarantee, and how:
 | Timestamp can't be backdated | Server `received_at` is authoritative; client `captured_at` stored but only used to flag skew > 10 min |
 | File not altered after upload | Client computes SHA-256 before upload; server re-hashes on finalize (R2 `HeadObject` + stream hash in activity); mismatch = rejected. Keys are write-once (`evidence/<bookingId>/<phase>/<party>/<uuid>.jpg`), no overwrite route exists |
 | Both parties saw the same evidence | Each side's submission is **countersigned**: the other party taps "I agree this matches" (or raises an objection) → that acknowledgement is itself an event |
-| Nothing is deleted during a dispute | R2 lifecycle: evidence retained 180 days after `COMPLETED`, indefinitely while a dispute is open (DPDP: purpose-limited retention, documented in privacy policy) |
+| Nothing is deleted during a dispute | Evidence kept 3 years after the person's last activity, and while a dispute is open or an award unpaid (Privacy Policy section 7; purge job due before 2029-11, see api/ROUTES.md "Data retention") |
 
 Spoofed GPS on rooted Android is possible; we accept that. The *real* deterrent is the society context: everyone's flat number is known to the admin.
 
@@ -1321,7 +1321,7 @@ Notes on correctness:
 ## 9. Legal / policy (India)
 
 * T&Cs: platform is an **intermediary** (IT Act s.79 + 2021 Intermediary Rules → grievance officer contact, takedown process). Lender owns condition risk; deposit is the sole remedy on-platform.
-* **DPDP Act 2023**: photos of people's homes/faces, phone numbers, proof documents are personal data — consent at onboarding, purpose-limited retention (180 days post-completion), deletion on request except open disputes.
+* **DPDP Act 2023**: photos of people's homes/faces, phone numbers, proof documents are personal data — consent at onboarding, purpose-limited retention (3 years after last activity; see api/ROUTES.md "Data retention"), deletion on request except open disputes.
 * Prohibited categories: vehicles, weapons, medicines, anything needing a licence, personal-care items; baby car seats need an "accident history" disclosure.
 * Governing law: 3PandaLabs contracts default to New Jersey, but consumer-facing India terms will likely need Indian jurisdiction once the Indian entity exists — get advice.
 * Skill gigs: tutoring/pet-sitting by residents is informal income — platform takes no responsibility for licensing; food (home baking) above small scale needs FSSAI registration → show a disclaimer and a "has FSSAI no." field.

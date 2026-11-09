@@ -1,0 +1,15 @@
+{
+  "name": "borrowvault-play-store-tools",
+  "private": true,
+  "type": "module",
+  "description": "Renders the Play Store graphics and frames screenshots. See ../README.md.",
+  "scripts": {
+    "graphics": "node build-graphics.mjs",
+    "frame": "node frame-screenshots.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "geist": "^1.9.2",
+    "opentype.js": "^1.3.4"
+  }
+}

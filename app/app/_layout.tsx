@@ -6,13 +6,17 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { usePushNotifications } from "../src/hooks/usePushNotifications";
 import { UnreadProvider } from "../src/hooks/useUnread";
+import { initCrashReporting, setCrashUser, wrapRoot } from "../src/lib/crash";
 import { colors } from "../src/lib/theme";
+
+initCrashReporting();
 
 function RootNavigation() {
   const { user, memberships, approved, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   usePushNotifications(!isLoading && !!user && approved.length > 0);
+  useEffect(() => setCrashUser(user?.id ?? null), [user?.id]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -58,7 +62,7 @@ function RootNavigation() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -70,3 +74,4 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+export default wrapRoot(RootLayout);

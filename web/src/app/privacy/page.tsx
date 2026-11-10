@@ -273,6 +273,12 @@ export default function PrivacyPage() {
             push notifications to the mobile app. A notification contains the sender’s name, the listing title and the
             first 100 characters of the message.
           </li>
+          <li>
+            <strong>Functional Software, Inc. (Sentry)</strong>: receives crash reports from the mobile app so we can fix
+            bugs. A report contains the error, the screen and device details (model, operating system, app version) and
+            your account&rsquo;s internal ID. It does not contain your name, email, phone number, IP address or message
+            text.
+          </li>
         </UL>
         <p>
           This means your personal data is stored and processed outside India, including in the European Union and the

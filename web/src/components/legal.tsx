@@ -10,7 +10,7 @@ import { Logo } from "@/components/Wordmark";
 export const PRIVACY_EMAIL = "privacy@3pandalabs.com";
 export const SUPPORT_EMAIL = "support@3pandalabs.com";
 
-export const LAST_UPDATED = "9 November 2026";
+export const LAST_UPDATED = "10 November 2026";
 
 export type TocEntry = { id: string; title: string };
 

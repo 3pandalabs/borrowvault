@@ -627,7 +627,6 @@ function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Soc
               </label>
             ))}
           </div>
-          <p className="mt-2 text-xs text-fg-muted">Changes apply to new bookings only; bookings already made keep the mode they started with.</p>
         </div>
 
         <ErrorText>{geoErr ?? action.error}</ErrorText>

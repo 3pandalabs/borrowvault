@@ -326,11 +326,17 @@ export const joinSociety = (
 export const listMyAdminRequests = () => get<AdminRequest[]>("/admin-requests/mine");
 export const withdrawAdminRequest = (id: string) =>
   post<AdminRequest>(`/admin-requests/${encodeURIComponent(id)}/withdraw`);
+/** Nominee declines a co-admin nomination (accepting needs an ID upload, which is on the web). */
+export const declineNomination = (id: string) =>
+  post<AdminRequest>(`/admin-requests/${encodeURIComponent(id)}/decline`);
 
 /** Admin-request errors whose generic copy (written for bookings) would mislead. */
 export function adminRequestError(err: unknown): string {
   if (err instanceof ApiError && err.error === "not_pending") {
     return "This request has already been reviewed or withdrawn. Pull down to refresh.";
+  }
+  if (err instanceof ApiError && err.error === "not_nominated") {
+    return "This nomination has already been answered or cancelled. Pull down to refresh.";
   }
   if (err instanceof ApiError && err.status === 404) return "Request not found. Pull down to refresh.";
   return friendlyError(err);

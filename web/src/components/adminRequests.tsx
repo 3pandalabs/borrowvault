@@ -1,10 +1,11 @@
 "use client";
 
-import { ExternalLink, FileUp, Loader2, ShieldCheck } from "lucide-react";
+import { ChevronRight, ExternalLink, FileUp, Loader2, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { errorMessage, uploadFile } from "@/lib/api";
 import { formatIST } from "@/lib/format";
-import type { AdminRequestKind, AdminRequestStatus, SocietyAdmin } from "@/lib/types";
+import type { AdminRequest, AdminRequestKind, AdminRequestStatus, SocietyAdmin } from "@/lib/types";
 import { Field } from "./common";
 import { Badge, type BadgeVariant } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -280,5 +281,40 @@ function AdminRow({ a, onRevoke }: { a: SocietyAdmin; onRevoke?: (a: SocietyAdmi
         </form>
       ) : null}
     </li>
+  );
+}
+
+/** "<Nominator> nominated you as a co-admin of <Society>": the nominee's headline. */
+export function nominationHeadline(r: AdminRequest): string {
+  return `${r.nominatedBy?.displayName || "An admin of your society"} nominated you as a co-admin of ${r.societyName}`;
+}
+
+/**
+ * Green banner per co-admin nomination waiting for the signed-in user (Profile).
+ * Renders nothing when there are none.
+ */
+export function NominationBanners({ nominations }: { nominations: AdminRequest[] }) {
+  if (!nominations.length) return null;
+  return (
+    <div className="mb-4 space-y-3">
+      {nominations.map((r) => (
+        <div key={r.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg">
+            <ShieldCheck className="size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">{nominationHeadline(r)}</p>
+            <p className="mt-0.5 text-sm text-emerald-900/80">
+              Accept by uploading your ID proof, or decline. Co-admins approve residents, issue invite codes and settle disputes.
+            </p>
+          </div>
+          <Link href="/admin-requests">
+            <Button size="sm">
+              Review nomination <ChevronRight />
+            </Button>
+          </Link>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -55,9 +55,9 @@ export async function chatPushTargets(userId: string): Promise<string[]> {
 }
 
 /**
- * Where to push a booking notice (dispute response, accepted offer): every
- * token of the user, NOT gated by chatPushEnabled (that switch is about chat).
- * [] for a deleted account (its tokens are deleted anyway).
+ * Every token of the user, NOT gated by chatPushEnabled (that switch is about chat):
+ * booking notices (dispute response, accepted offer) and account events (a co-admin
+ * nomination). [] for a deleted account (its tokens are deleted anyway).
  */
 export async function bookingPushTargets(userId: string): Promise<string[]> {
   const rows = await db

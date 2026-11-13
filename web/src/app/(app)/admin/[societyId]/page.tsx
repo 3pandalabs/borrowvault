@@ -590,20 +590,43 @@ function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Soc
           <div className="space-y-2">
             {(
               [
-                ["declared", "Declared", "No deposit money moves. If a dispute awards damages, the borrower owes it as a recorded debt."],
-                ["p2p", "Peer-to-peer", "The borrower pays the deposit to the lender over UPI, and the lender refunds it after a clean return."],
+                [
+                  "declared",
+                  "Declared (recommended to start)",
+                  "No deposit money changes hands. The borrower pays only the rental fee to the lender over UPI.",
+                  [
+                    "The listing still shows a deposit amount: it is the agreed value the borrower is answerable for.",
+                    "If the item comes back damaged or missing and a dispute awards damages, that amount is recorded against the borrower as a debt they must pay before borrowing again.",
+                    "Best for trusted neighbours and low-value items. Easiest for residents, but lenders rely on the borrower paying the debt.",
+                  ],
+                ],
+                [
+                  "p2p",
+                  "Peer-to-peer deposit",
+                  "The borrower pays the rental fee and the full deposit to the lender over UPI before handover.",
+                  [
+                    "The lender holds the deposit and refunds it over UPI after a clean return, then the borrower confirms receiving it.",
+                    "If the refund isn’t confirmed within 24 hours, a dispute is opened automatically on the borrower’s behalf.",
+                    "If there’s damage, the lender can raise a dispute and the award is settled out of the deposit.",
+                    "Best for higher-value items. Lenders are better protected, but borrowers need the deposit money upfront.",
+                  ],
+                ],
               ] as const
-            ).map(([v, l, d]) => (
+            ).map(([v, l, d, points]) => (
               <label key={v} className={cn("flex cursor-pointer gap-3 rounded-xl border p-3 text-sm", mode === v ? "border-accent bg-emerald-50" : "border-line")}>
                 <input type="radio" name="mode" checked={mode === v} onChange={() => setMode(v)} className="mt-1" />
                 <span>
                   <span className="font-medium">{l}</span>
                   <span className="block text-fg-muted">{d}</span>
+                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs text-fg-muted">
+                    {points.map((pt) => (
+                      <li key={pt}>{pt}</li>
+                    ))}
+                  </ul>
                 </span>
               </label>
             ))}
           </div>
-          <p className="mt-2 text-xs text-fg-muted">Changes apply to new bookings.</p>
         </div>
 
         <ErrorText>{geoErr ?? action.error}</ErrorText>

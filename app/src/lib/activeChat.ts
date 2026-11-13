@@ -25,6 +25,13 @@ export function chatConversationId(data: unknown): string | null {
   return d.type === "chat" && typeof d.conversationId === "string" && d.conversationId ? d.conversationId : null;
 }
 
+/** `data` of a BorrowVault booking push (api/ROUTES.md "Dispute notices") → its booking id, else null. */
+export function bookingPushId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const d = data as { type?: unknown; bookingId?: unknown };
+  return d.type === "booking" && typeof d.bookingId === "string" && d.bookingId ? d.bookingId : null;
+}
+
 /** Show a foreground notification unless it's a chat push for the conversation already open. */
 export function shouldPresent(data: unknown, active: string | null = activeConversationId): boolean {
   const id = chatConversationId(data);

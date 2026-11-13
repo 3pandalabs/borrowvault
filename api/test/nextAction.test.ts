@@ -104,6 +104,17 @@ describe("computeNextAction", () => {
     expect(computeNextAction(input({ state: "DISPUTED", role: "lender", dispute: { ...d, escalated: true } })).deadlineAt).toBeNull();
   });
 
+  it("DISPUTED: an offer gives the raiser accept_offer (also after escalation); the respondent waits", () => {
+    const d = { raisedByRole: "lender" as const, responded: true, offered: true, createdAt: t0, escalated: false, resolved: false };
+    const l = computeNextAction(input({ state: "DISPUTED", role: "lender", dispute: d }));
+    expect(l.nextAction).toBe("accept_offer");
+    expect(iso(l.deadlineAt)).toBe("2026-11-04T10:00:00.000Z");
+    expect(computeNextAction(input({ state: "DISPUTED", role: "lender", dispute: { ...d, escalated: true } })).nextAction).toBe("accept_offer");
+    expect(computeNextAction(input({ state: "DISPUTED", role: "borrower", dispute: d })).nextAction).toBe("wait_ruling");
+    expect(computeNextAction(input({ state: "DISPUTED", role: "lender", dispute: { ...d, offered: false } })).nextAction).toBe("wait_ruling");
+    expect(computeNextAction(input({ state: "DISPUTED", role: "admin", dispute: d })).nextAction).toBeNull();
+  });
+
   it("COMPLETED (p2p): refund_deposit -> confirm_refund -> rate, with a 24 h deadline", () => {
     const p = payment({ depositMode: "p2p", refundDuePaise: 300000 });
     const l = computeNextAction(input({ state: "COMPLETED", role: "lender", payment: p }));

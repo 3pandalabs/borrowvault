@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, Text, View } from "react-native";
@@ -5,6 +6,7 @@ import { Button, Card, Chip, Countdown, ErrorText, Field, H2, KV, Loading, P, Sc
 import { useAction, useLoader } from "../../../src/hooks/useAsync";
 import {
   acceptBooking,
+  acceptDisputeOffer,
   awardPaidClaim,
   bookingConversation,
   chatError,
@@ -20,6 +22,7 @@ import {
 import { counterParty, fenceFlag, myInspection, openUpi, otherInspection, PRE_ACTIVE, upiPayee } from "../../../src/lib/booking";
 import { formatDateTime, formatPaise, formatStateLabel } from "../../../src/lib/format";
 import { disputeCategoryLabel, isWaiting, nextActionLabel } from "../../../src/lib/labels";
+import { refreshOffers } from "../../../src/lib/offers";
 import { colors } from "../../../src/lib/theme";
 import type { BookingDetail } from "../../../src/lib/types";
 import { isValidUtr } from "../../../src/lib/validation";
@@ -61,6 +64,7 @@ export default function BookingDetailScreen() {
         <MessageButton b={b} />
       </Card>
 
+      {b.nextAction === "accept_offer" ? <OfferCard b={b} onUpdate={setData} /> : null}
       <NextActionCard b={b} onUpdate={setData} />
       <EvidenceLinks b={b} />
 
@@ -177,6 +181,17 @@ function NextActionCard({ b, onUpdate }: { b: BookingDetail; onUpdate: (d: Booki
     case "review_return":
       body = <Button title="Review return side-by-side" icon="git-compare" onPress={() => go(`/booking/${b.id}/review`)} />;
       break;
+    case "accept_offer":
+      body = (
+        <>
+          <P muted>
+            Accept the offer above to settle now. If you leave it, the dispute is ruled on as usual (it goes to the BorrowVault team if
+            nobody rules within 72 hours of it being raised). The offer stays open until then.
+          </P>
+          <Button title="Open dispute" icon="flag" variant="secondary" onPress={() => go(`/booking/${b.id}/dispute`)} />
+        </>
+      );
+      break;
     case "respond_dispute":
     case "wait_ruling":
       body = <Button title="Open dispute" icon="flag" variant={b.nextAction === "wait_ruling" ? "secondary" : "primary"} onPress={() => go(`/booking/${b.id}/dispute`)} />;
@@ -270,6 +285,42 @@ function EvidenceLinks({ b }: { b: BookingDetail }) {
     <Card>
       <H2>Inspections</H2>
       {rows}
+    </Card>
+  );
+}
+
+/** The raiser's prominent "they offered to settle" card (nextAction `accept_offer`). */
+function OfferCard({ b, onUpdate }: { b: BookingDetail; onUpdate: (d: BookingDetail) => void }) {
+  const action = useAction();
+  const d = b.dispute;
+  if (!d || d.offerPaise === null) return null;
+  const offer = d.offerPaise;
+  const name = counterParty(b).displayName;
+  return (
+    <Card style={{ backgroundColor: colors.accentSoft, borderColor: colors.accent, borderWidth: 2 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Ionicons name="hand-left-outline" size={16} color={colors.accent} />
+        <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 12, letterSpacing: 0.5 }}>SETTLEMENT OFFER</Text>
+      </View>
+      <H2>
+        {name} offered {formatPaise(offer)} to settle
+      </H2>
+      <P>
+        You claimed {formatPaise(d.claimedPaise)}. Accepting settles the dispute at {formatPaise(offer)} straight away.
+      </P>
+      {d.responseText ? <P muted>“{d.responseText}”</P> : null}
+      <ErrorText>{action.error}</ErrorText>
+      <Button
+        title="Accept offer"
+        icon="checkmark-circle"
+        busy={action.busy}
+        onPress={() =>
+          void action.run(async () => {
+            onUpdate(await acceptDisputeOffer(b.id));
+            void refreshOffers();
+          })
+        }
+      />
     </Card>
   );
 }

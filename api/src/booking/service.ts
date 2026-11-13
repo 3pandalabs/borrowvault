@@ -28,8 +28,10 @@ import {
   DISPUTABLE_STATES,
   OCCUPYING_STATES,
   overdueCountsAgainstTrust,
+  TIMERS,
   type BookingState,
 } from "./states.js";
+import { noticeDisputeResponse, noticeOfferAccepted } from "./disputeNotice.js";
 import { transition, TransitionConflict } from "./transition.js";
 import { BORROWING_PAUSED_BELOW, computeTrustScore } from "./trust.js";
 
@@ -836,7 +838,18 @@ export async function respondDispute(i: { bookingId: string; actorId: string; re
     .returning({ id: disputes.id });
   if (!updated.length) throw alreadySubmitted("already responded");
   await db.insert(disputeMessages).values({ disputeId: d.id, authorId: i.actorId, body: i.responseText });
-  await notifyUsers([otherParty(b, role)], "Dispute response received", i.offerPaise != null ? "The other party made a settlement offer." : "The other party responded to your dispute.", link(b.id));
+  // Push + email to the raiser (ROUTES.md "Dispute notices"). After the commit; never throws.
+  const pilot = isPilot(await societyTierOf(b.societyId).catch(() => "verified"));
+  noticeDisputeResponse({
+    booking: b,
+    raiserId: otherParty(b, role),
+    responderId: i.actorId,
+    claimedPaise: d.claimedPaise,
+    offerPaise: i.offerPaise ?? null,
+    responseText: i.responseText,
+    pilot,
+    escalatesAt: d.escalatedAt ? null : new Date(d.createdAt.getTime() + TIMERS.disputeEscalateMs),
+  });
 }
 
 async function resolve(
@@ -847,6 +860,8 @@ async function resolve(
   actorId: string,
   reason: string,
   note: string | null,
+  /** Parties who get a specific notice instead of the generic "Dispute resolved" email. */
+  skipNotify: string[] = [],
 ) {
   const p = await loadPayment(b.id);
   const raiser: PartyRole = d.raisedBy === b.lenderId ? "lender" : "borrower";
@@ -909,7 +924,7 @@ async function resolve(
     }
     return s;
   });
-  await notifyUsers([b.lenderId, b.borrowerId], "Dispute resolved", `The dispute was resolved with an award of Rs ${(awardPaise / 100).toFixed(2)}.`, link(b.id));
+  await notifyUsers([b.lenderId, b.borrowerId].filter((id) => !skipNotify.includes(id)), "Dispute resolved", `The dispute was resolved with an award of Rs ${(awardPaise / 100).toFixed(2)}.`, link(b.id));
   return s;
 }
 
@@ -921,7 +936,12 @@ export async function acceptOffer(i: { bookingId: string; actorId: string }): Pr
   const d = await loadDispute(b.id);
   if (d.raisedBy !== i.actorId) throw forbidden("only the party who raised the dispute can accept the offer");
   if (d.responseOfferPaise == null) throw conflict("there is no offer to accept");
-  return resolve(b, d, d.responseOfferPaise, null, i.actorId, "settled_offer_accepted", null);
+  const responderId = otherParty(b, partyOf(b, i.actorId));
+  const s = await resolve(b, d, d.responseOfferPaise, null, i.actorId, "settled_offer_accepted", null, [responderId]);
+  // Push + email to the responder (ROUTES.md "Dispute notices"). Fire-and-forget: an
+  // activity retry can't repeat it, since a second resolve() fails the transition first.
+  noticeOfferAccepted({ booking: b, raiserId: i.actorId, responderId, offerPaise: d.responseOfferPaise });
+  return s;
 }
 
 /** Activity: society admin (not a party, not the same unit) or platform admin rules -> RESOLVED. */

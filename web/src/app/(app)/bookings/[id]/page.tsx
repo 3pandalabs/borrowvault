@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Clock, Flag, Gavel, Loader2, MessageCircle, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Flag, Gavel, Handshake, Loader2, MessageCircle, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -15,6 +15,7 @@ import { UpiPay } from "@/components/UpiPay";
 import * as api from "@/lib/api";
 import { formatCountdown, formatINR, formatIST, formatRange } from "@/lib/format";
 import { useAction, useAsync } from "@/lib/hooks";
+import { refreshOffers } from "@/lib/offers";
 import { useSession } from "@/lib/session";
 import type { BookingDetail, BookingState, InspectionPhase } from "@/lib/types";
 
@@ -133,6 +134,24 @@ function Detail({ b, set, reload }: { b: BookingDetail; set: (b: BookingDetail) 
             ) : null}
           </dl>
         </Panel>
+
+        {next === "accept_offer" && b.dispute?.offerPaise != null ? (
+          <OfferCard
+            name={other.displayName}
+            offerPaise={b.dispute.offerPaise}
+            claimedPaise={b.dispute.claimedPaise}
+            note={b.dispute.responseText}
+            busy={!!action.busy}
+            error={action.error}
+            onAccept={() =>
+              act(async () => {
+                const fresh = await api.acceptOffer(b.id);
+                void refreshOffers();
+                return fresh;
+              })
+            }
+          />
+        ) : null}
 
         {/* ---- what to do now ---- */}
         <Panel className={copy?.mine ? "border-accent/40 ring-1 ring-accent/20" : ""}>
@@ -254,6 +273,14 @@ function Detail({ b, set, reload }: { b: BookingDetail; set: (b: BookingDetail) 
               <DisputeSummary d={b.dispute} partyName={partyName} />
               <RespondDisputeForm bookingId={b.id} claimedPaise={b.dispute.claimedPaise} onDone={set} />
             </div>
+          ) : null}
+
+          {next === "accept_offer" && b.dispute ? (
+            <p className="text-sm text-fg-muted">
+              Accept the offer above to settle now. If you leave it, a society admin who isn&apos;t involved compares the evidence
+              and rules; if nobody rules within 72 hours of the dispute being raised, it goes to 3PandaLabs. The offer stays open
+              until then.
+            </p>
           ) : null}
 
           {next === "wait_ruling" && b.dispute ? (
@@ -590,5 +617,47 @@ function AckForm({
       )}
       <ErrorText>{error}</ErrorText>
     </div>
+  );
+}
+
+/** The raiser's prominent "they offered to settle" card (nextAction `accept_offer`). */
+function OfferCard({
+  name,
+  offerPaise,
+  claimedPaise,
+  note,
+  busy,
+  error,
+  onAccept,
+}: {
+  name: string;
+  offerPaise: number;
+  claimedPaise: number;
+  note: string | null;
+  busy: boolean;
+  error: string | null;
+  onAccept: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-4 shadow-sm sm:p-5">
+      <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-emerald-800 uppercase">
+        <Handshake className="size-4" /> Settlement offer
+      </p>
+      <h2 className="mt-1 text-lg font-semibold text-emerald-950">
+        {name} offered {formatINR(offerPaise)} to settle
+      </h2>
+      <p className="mt-1 text-sm text-emerald-900">
+        You claimed {formatINR(claimedPaise)}. Accepting settles the dispute at {formatINR(offerPaise)} straight away.
+      </p>
+      {note ? (
+        <blockquote className="mt-3 border-l-4 border-emerald-400 bg-white/70 px-3 py-2 text-sm whitespace-pre-wrap text-emerald-950">
+          {note}
+        </blockquote>
+      ) : null}
+      <Button className="mt-4 bg-emerald-700 text-white hover:bg-emerald-800" disabled={busy} onClick={onAccept}>
+        {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Accept offer
+      </Button>
+      <ErrorText>{error}</ErrorText>
+    </section>
   );
 }

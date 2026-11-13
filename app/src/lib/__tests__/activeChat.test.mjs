@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  bookingPushId,
   chatConversationId,
   clearActiveConversation,
   getActiveConversation,
   setActiveConversation,
   shouldPresent,
 } from "../activeChat.ts";
+
+test("bookingPushId reads only booking (dispute notice) pushes", () => {
+  assert.equal(bookingPushId({ type: "booking", bookingId: "b1" }), "b1");
+  assert.equal(bookingPushId({ type: "chat", conversationId: "c1" }), null);
+  assert.equal(bookingPushId({ type: "booking", bookingId: "" }), null);
+  assert.equal(bookingPushId(null), null);
+  assert.equal(chatConversationId({ type: "booking", bookingId: "b1" }), null);
+  assert.equal(shouldPresent({ type: "booking", bookingId: "b1" }, "b1"), true);
+});
 
 test("chatConversationId reads only chat pushes", () => {
   assert.equal(chatConversationId({ type: "chat", conversationId: "c1" }), "c1");

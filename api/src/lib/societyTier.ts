@@ -30,4 +30,7 @@ export async function lockSocietyTier(tx: DbOrTx, societyId: string): Promise<st
 }
 
 /** `memberCount` subquery for Society views: approved memberships, admins included. */
-export const memberCountSql = sql<number>`(select count(*) from ${memberships} where ${memberships.societyId} = ${societies.id} and ${memberships.status} = 'approved')::int`;
+// Columns are written table-qualified on purpose: Drizzle renders ${col} inside a
+// select-list sql`` as a bare "id", which in the subquery resolved to memberships.id
+// and made every count 0.
+export const memberCountSql = sql<number>`(select count(*) from "memberships" where "memberships"."society_id" = "societies"."id" and "memberships"."status" = 'approved')::int`;

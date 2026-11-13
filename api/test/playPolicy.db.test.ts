@@ -75,6 +75,7 @@ import { listingRoutes } from "../src/routes/listings.js";
 import { moderationRoutes } from "../src/routes/moderation.js";
 import { societyRoutes } from "../src/routes/societies.js";
 import { userRoutes } from "../src/routes/users.js";
+import { memberCountSql } from "../src/lib/societyTier.js";
 
 const drizzleDir = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -181,6 +182,16 @@ describe.skipIf(!RUN)("play policy fixes (Postgres)", () => {
   afterAll(async () => {
     await app?.close();
     await pool.end();
+  });
+
+  it("memberCount counts approved memberships of THAT society (BV-2 regression)", async () => {
+    const [s3] = await db.insert(societies).values({ name: "Count Court", city: "Pune", centerLat: 18.7, centerLng: 73.7, status: "live" }).returning();
+    await db.insert(towers).values({ societyId: s3.id, name: "C" });
+    await member(await signup("cnt-a"), s3.id);
+    await member(await signup("cnt-b"), s3.id, { role: "society_admin" });
+    await member(await signup("cnt-c"), s3.id, { status: "pending" });
+    const rows = await db.select({ id: societies.id, c: memberCountSql }).from(societies);
+    expect(rows.find((r) => r.id === s3.id)?.c).toBe(2);
   });
 
   it("migration 0008 is idempotent (every statement re-runs cleanly)", async () => {

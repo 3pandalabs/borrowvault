@@ -9,7 +9,7 @@ import { useAction, useLoader, useNow } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { bookingRequestError, chatError, createBooking, createConversation, getAvailability, getListing } from "../../src/lib/api";
 import { formatDateTime, formatPaise, fromIst, istParts } from "../../src/lib/format";
-import { PRICING_LABEL, priceLine } from "../../src/lib/labels";
+import { categoryLabel, PRICING_LABEL, priceLine } from "../../src/lib/labels";
 import { colors } from "../../src/lib/theme";
 import type { BusyRange, Listing, PricingUnit } from "../../src/lib/types";
 
@@ -159,7 +159,7 @@ export default function ListingDetail() {
       <Card>
         {l.depositPaise > 0 ? <KV k="Deposit" v={formatPaise(l.depositPaise)} /> : null}
         {l.replacementValuePaise ? <KV k="Replacement value" v={formatPaise(l.replacementValuePaise)} /> : null}
-        <KV k="Category" v={l.category} />
+        <KV k="Category" v={categoryLabel(l.category)} />
       </Card>
       {l.kind === "item" && (l.requiredPhotoSlots.length || l.checklistTemplate.length) ? (
         <Card>

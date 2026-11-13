@@ -158,7 +158,7 @@ export default function NewListing() {
       </View>
       {touched && errors.category ? <ErrorText>{errors.category}</ErrorText> : null}
 
-      <Field label="Title" value={title} onChangeText={setTitle} placeholder={isItem ? "Bosch GSB 500 drill" : "Maths tutoring (Class 8-10)"} error={touched ? errors.title : null} />
+      <Field label="Title" value={title} onChangeText={setTitle} placeholder={isItem ? "Cordless drill with bit set" : "Maths tutoring (Class 8-10)"} error={touched ? errors.title : null} />
       <Field label="Description" value={description} onChangeText={setDescription} multiline />
 
       <Card>

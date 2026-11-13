@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError, createBooking, errorMessage, getAvailability, getListing, openListingConversation } from "@/lib/api";
 import { formatINR, formatRange, istLocalToIso } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
-import { priceLine } from "@/lib/listing";
+import { categoryLabel, priceLine } from "@/lib/listing";
 import { useSession } from "@/lib/session";
 import type { Listing, PricingUnit } from "@/lib/types";
 
@@ -50,7 +50,7 @@ export default function ListingDetailPage() {
         <Panel>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant={l.kind === "skill" ? "info" : "muted"}>{l.kind === "skill" ? "Skill" : "Item"}</Badge>
-            <span className="text-sm text-fg-muted">{l.category}</span>
+            <span className="text-sm text-fg-muted">{categoryLabel(l.category)}</span>
             {l.status === "removed" ? (
               <Badge variant="bad">Removed</Badge>
             ) : l.status !== "active" ? (

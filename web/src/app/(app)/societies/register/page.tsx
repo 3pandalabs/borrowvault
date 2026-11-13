@@ -80,13 +80,11 @@ export default function RegisterSocietyPage() {
     const g = await tryGeo();
     setGeoBusy(false);
     if (!g) {
-      setGeoNote("Couldn't get your location. Allow location access in your browser, or type the coordinates in.");
+      setGeoNote("Couldn't get your location. Allow location access in your browser and try again.");
       return;
     }
     setForm((f) => ({ ...f, lat: g.lat.toFixed(6), lng: g.lng.toFixed(6) }));
-    setGeoNote(
-      `Location set (accurate to about ${g.accuracyM} m). Check it on the map: it should be near the middle of the complex.`,
-    );
+    setGeoNote(`Location captured (accurate to about ${g.accuracyM} m). Check it on Google Maps: it should be inside the complex.`);
   }
 
   async function submit(e: React.FormEvent) {
@@ -97,7 +95,7 @@ export default function RegisterSocietyPage() {
       ["societyName", "city", "address", "lat", "lng", "radius", "towerName", "flatNo", "committeeRole"] as const
     ).some((k) => !form[k].trim());
     const missingDoc = Object.values(docs).some((d) => !d.file);
-    if (missingText || missingDoc || latErr || lngErr || radiusErr || Object.values(errs).some(Boolean)) {
+    if (missingText || missingDoc || !coordsOk || latErr || lngErr || radiusErr || Object.values(errs).some(Boolean)) {
       setError("Fix the highlighted fields first.");
       return;
     }
@@ -184,21 +182,10 @@ export default function RegisterSocietyPage() {
               </Button>
             </div>
             <p className="mb-3 text-xs text-fg-muted">
-              Stand near the middle of the complex and tap the button, or paste the coordinates from Google Maps. The radius
-              should cover the whole campus: handover and return photos are checked against this circle to confirm they were
-              taken inside the society.
+              Stand near the middle of the complex and tap the button. Handover and return photos are checked against this
+              location to confirm they were taken inside the society.
             </p>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Centre latitude" htmlFor="lat" error={latErr ?? required(form.lat)}>
-                <Input id="lat" inputMode="decimal" placeholder="12.971599" value={form.lat} onChange={set("lat")} />
-              </Field>
-              <Field label="Centre longitude" htmlFor="lng" error={lngErr ?? required(form.lng)}>
-                <Input id="lng" inputMode="decimal" placeholder="77.594566" value={form.lng} onChange={set("lng")} />
-              </Field>
-              <Field label="Radius (m)" htmlFor="rad" error={radiusErr ?? required(form.radius)} hint="300 m suits most complexes.">
-                <Input id="rad" inputMode="numeric" value={form.radius} onChange={set("radius")} />
-              </Field>
-            </div>
+            {tried && !coordsOk ? <ErrorText>Tap “Use my current location” to set where the society is.</ErrorText> : null}
             {geoNote ? <p className="mt-2 text-xs text-fg-muted">{geoNote}</p> : null}
             {coordsOk ? (
               <a
@@ -207,7 +194,7 @@ export default function RegisterSocietyPage() {
                 rel="noopener noreferrer"
                 className="mt-2 inline-block text-xs text-accent hover:underline"
               >
-                Check this point on Google Maps
+                Check on Google Maps
               </a>
             ) : null}
           </div>

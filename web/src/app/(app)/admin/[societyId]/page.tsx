@@ -512,7 +512,7 @@ function SocietySettings({ societyId }: { societyId: string }) {
 function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Society) => void }) {
   const [lat, setLat] = useState(society.centerLat == null ? "" : String(society.centerLat));
   const [lng, setLng] = useState(society.centerLng == null ? "" : String(society.centerLng));
-  const [radius, setRadius] = useState(society.radiusM == null ? "" : String(society.radiusM));
+  const [radius] = useState(society.radiusM == null ? "" : String(society.radiusM));
   const [mode, setMode] = useState<DepositMode>(society.settings?.depositMode ?? "declared");
   const action = useAction();
   const [justSaved, setJustSaved] = useState(false);
@@ -527,11 +527,19 @@ function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Soc
   const dirty =
     latN !== society.centerLat || lngN !== society.centerLng || rN !== society.radiusM || mode !== society.settings?.depositMode;
 
+  const [geoNote, setGeoNote] = useState<string | null>(null);
   function fillMyLocation() {
-    navigator.geolocation?.getCurrentPosition((p) => {
-      setLat(p.coords.latitude.toFixed(6));
-      setLng(p.coords.longitude.toFixed(6));
-    });
+    setGeoNote(null);
+    if (!navigator.geolocation) return setGeoNote("This browser can't share its location.");
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setLat(p.coords.latitude.toFixed(6));
+        setLng(p.coords.longitude.toFixed(6));
+        setGeoNote(`Location updated (accurate to about ${Math.round(p.coords.accuracy)} m). Save to keep it.`);
+      },
+      () => setGeoNote("Couldn't get your location. Allow location access in your browser and try again."),
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
   }
 
   return (
@@ -557,23 +565,13 @@ function SettingsForm({ society, onSaved }: { society: Society; onSaved: (s: Soc
           <PanelTitle aside={<Badge variant="muted">{society.status}</Badge>}>
             {society.name}, {society.city}
           </PanelTitle>
-          <p className="mb-1 text-sm font-medium">Geofence</p>
+          <p className="mb-1 text-sm font-medium">Location</p>
           <p className="mb-3 text-sm text-fg-muted">
-            Handover and return photos are checked against this circle. Put the centre in the middle of the society and pick a radius that
-            covers every tower.
+            Handover and return photos are checked against this location. To move it, stand near the middle of the society and tap the
+            button.
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Centre latitude" htmlFor="lat">
-              <Input id="lat" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
-            </Field>
-            <Field label="Centre longitude" htmlFor="lng">
-              <Input id="lng" inputMode="decimal" value={lng} onChange={(e) => setLng(e.target.value)} />
-            </Field>
-            <Field label="Radius (m)" htmlFor="rad">
-              <Input id="rad" inputMode="numeric" value={radius} onChange={(e) => setRadius(e.target.value)} />
-            </Field>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
+          {geoNote ? <p className="mb-2 text-xs text-fg-muted">{geoNote}</p> : null}
+          <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={fillMyLocation}>
               <MapPin /> Use my current location
             </Button>

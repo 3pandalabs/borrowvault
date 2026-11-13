@@ -113,6 +113,7 @@ function summarize(b: Booking, ctx: Ctx, callerId: string) {
       ? {
           raisedByRole: d.raisedBy === b.lenderId ? "lender" : "borrower",
           responded: Boolean(d.respondedAt),
+          offered: d.responseOfferPaise != null,
           createdAt: d.createdAt,
           escalated: Boolean(d.escalatedAt),
           resolved: d.status === "resolved",

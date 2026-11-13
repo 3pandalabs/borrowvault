@@ -1,7 +1,7 @@
 // Expo push token storage (api/ROUTES.md "POST/DELETE /me/push-tokens").
 // Route and push tests mock this module (no Postgres in the unit run).
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { pushTokens, users } from "../db/schema.js";
 
@@ -51,5 +51,19 @@ export async function chatPushTargets(userId: string): Promise<string[]> {
     .from(pushTokens)
     .innerJoin(users, eq(users.id, pushTokens.userId))
     .where(and(eq(pushTokens.userId, userId), eq(users.chatPushEnabled, true)));
+  return rows.map((r) => r.token);
+}
+
+/**
+ * Where to push a booking notice (dispute response, accepted offer): every
+ * token of the user, NOT gated by chatPushEnabled (that switch is about chat).
+ * [] for a deleted account (its tokens are deleted anyway).
+ */
+export async function bookingPushTargets(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ token: pushTokens.token })
+    .from(pushTokens)
+    .innerJoin(users, eq(users.id, pushTokens.userId))
+    .where(and(eq(pushTokens.userId, userId), isNull(users.deletedAt)));
   return rows.map((r) => r.token);
 }

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, logout } from "@/lib/api";
 import { SessionProvider, useMeLoader, useSession, useSignedIn } from "@/lib/session";
+import { useOfferCount, useOfferPoller } from "@/lib/offers";
 import { useUnread, useUnreadPoller } from "@/lib/unread";
 import { cn } from "@/lib/utils";
 import { Backdrop } from "./Backdrop";
@@ -61,10 +62,17 @@ function Header() {
   const [open, setOpen] = useState(false);
   useUnreadPoller();
   const unread = useUnread()?.total ?? 0;
+  useOfferPoller(approved.length > 0);
+  const offers = useOfferCount();
 
-  const links: { href: string; label: string; badge?: number }[] = [
+  const links: { href: string; label: string; badge?: number; badgeLabel?: string }[] = [
     { href: "/home", label: "Home" },
-    ...(approved.length ? [{ href: "/listings", label: "Browse" }, { href: "/bookings", label: "Bookings" }] : []),
+    ...(approved.length
+      ? [
+          { href: "/listings", label: "Browse" },
+          { href: "/bookings", label: "Bookings", badge: offers, badgeLabel: `${offers} settlement offer${offers === 1 ? "" : "s"} waiting` },
+        ]
+      : []),
     // Chats stay readable after a membership is revoked, so any membership (or
     // an unread message) is enough to show the inbox.
     ...(memberships.length || unread ? [{ href: "/messages", label: "Messages", badge: unread }] : []),
@@ -95,7 +103,8 @@ function Header() {
       {l.badge ? (
         <span
           className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-semibold text-accent-fg"
-          aria-label={`${l.badge} unread`}
+          aria-label={l.badgeLabel ?? `${l.badge} unread`}
+          title={l.badgeLabel}
         >
           {l.badge > 99 ? "99+" : l.badge}
         </span>

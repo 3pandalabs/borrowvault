@@ -224,6 +224,7 @@ export type NextAction =
   | "review_return"
   | "wait_review"
   | "respond_dispute"
+  | "accept_offer"
   | "wait_ruling"
   | "refund_deposit"
   | "confirm_refund"

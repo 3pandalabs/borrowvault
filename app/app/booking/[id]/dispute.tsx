@@ -9,6 +9,7 @@ import { useAuth } from "../../../src/hooks/useAuth";
 import { acceptDisputeOffer, getBooking, raiseDispute, respondDispute } from "../../../src/lib/api";
 import { formatDateTime, formatPaise, rupeesToPaise } from "../../../src/lib/format";
 import { DISPUTE_CATEGORIES, disputeCategoryLabel } from "../../../src/lib/labels";
+import { refreshOffers } from "../../../src/lib/offers";
 import { clearItems } from "../../../src/lib/uploadQueue";
 import { colors } from "../../../src/lib/theme";
 import { MediaGrid } from "../../../src/components/MediaGrid";
@@ -169,7 +170,7 @@ function DisputeView({ b, onUpdate }: { b: BookingDetail; onUpdate: (d: BookingD
         <Card>
           <P>They offered {formatPaise(d.offerPaise)} to settle.</P>
           <ErrorText>{action.error}</ErrorText>
-          <Button title={`Accept ${formatPaise(d.offerPaise)}`} busy={action.busy} onPress={() => void run(() => acceptDisputeOffer(b.id))} />
+          <Button title={`Accept ${formatPaise(d.offerPaise)}`} busy={action.busy} onPress={() => void run(() => acceptDisputeOffer(b.id).finally(() => void refreshOffers()))} />
           <P muted>Or wait for the society admin&apos;s ruling.</P>
         </Card>
       ) : null}

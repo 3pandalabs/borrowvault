@@ -20,6 +20,7 @@ export const ACTION_COPY: Record<NextAction, { label: string; mine: boolean }> =
   review_return: { label: "Review the return", mine: true },
   wait_review: { label: "Waiting for the lender's review", mine: false },
   respond_dispute: { label: "Respond to the dispute", mine: true },
+  accept_offer: { label: "Settlement offer waiting: accept it or wait for a ruling", mine: true },
   wait_ruling: { label: "Waiting for a ruling", mine: false },
   refund_deposit: { label: "Refund the deposit over UPI", mine: true },
   confirm_refund: { label: "Confirm the deposit refund", mine: true },

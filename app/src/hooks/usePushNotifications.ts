@@ -2,15 +2,18 @@ import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import { chatConversationId } from "../lib/activeChat";
+import { bookingPushId, chatConversationId } from "../lib/activeChat";
+import { refreshOffers } from "../lib/offers";
 import { useUnread } from "./useUnread";
 
 /**
- * Chat push handling (api/ROUTES.md "Push notifications"), mounted once in the
- * root layout. `ready` = signed in with an approved membership, i.e. the chat
- * screens are reachable.
- * - A chat push arriving in the foreground refreshes the unread badge.
- * - Tapping one (warm, or the tap that cold-started the app) opens /chat/<id>.
+ * Push handling (api/ROUTES.md "Push notifications" + "Dispute notices"), mounted
+ * once in the root layout. `ready` = signed in with an approved membership, i.e.
+ * the chat and booking screens are reachable.
+ * - A chat push arriving in the foreground refreshes the unread badge; a booking
+ *   push (dispute response / accepted offer) refreshes the "offer waiting" badge.
+ * - Tapping one (warm, or the tap that cold-started the app) opens /chat/<id> or
+ *   /booking/<id>.
  * Whether a foreground push is shown at all is decided in lib/push.ts.
  */
 export function usePushNotifications(ready: boolean) {
@@ -20,7 +23,9 @@ export function usePushNotifications(ready: boolean) {
   useEffect(() => {
     if (Platform.OS === "web") return;
     const sub = Notifications.addNotificationReceivedListener((n) => {
-      if (chatConversationId(n.request.content.data)) void refresh();
+      const data = n.request.content.data;
+      if (chatConversationId(data)) void refresh();
+      if (bookingPushId(data)) void refreshOffers();
     });
     return () => sub.remove();
   }, [refresh]);
@@ -29,11 +34,13 @@ export function usePushNotifications(ready: boolean) {
     if (!ready || Platform.OS === "web") return;
     const open = (r: Notifications.NotificationResponse | null) => {
       if (!r || r.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
-      const id = chatConversationId(r.notification.request.content.data);
-      if (!id) return;
+      const data = r.notification.request.content.data;
+      const chatId = chatConversationId(data);
+      const bookingId = chatId ? null : bookingPushId(data);
+      if (!chatId && !bookingId) return;
       // Handled: don't re-open it on the next mount / sign-in.
       Notifications.clearLastNotificationResponse();
-      router.push(`/chat/${id}`);
+      router.push(chatId ? `/chat/${chatId}` : `/booking/${bookingId}`);
     };
     // Cold start: the tap that launched the app. (getLastNotificationResponseAsync is
     // deprecated in SDK 57 in favour of this synchronous version.)

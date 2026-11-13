@@ -17,6 +17,7 @@ export type NextAction =
   | "review_return"
   | "wait_review"
   | "respond_dispute"
+  | "accept_offer"
   | "wait_ruling"
   | "refund_deposit"
   | "confirm_refund"
@@ -37,6 +38,8 @@ export type NextActionInput = {
   dispute: {
     raisedByRole: PartyRole;
     responded: boolean;
+    /** The response carried a settlement offer (only the raiser can accept it). */
+    offered?: boolean;
     createdAt: Date;
     escalated: boolean;
     resolved: boolean;
@@ -145,6 +148,8 @@ export function computeNextAction(i: NextActionInput): NextActionResult {
       const deadlineAt = d && !d.escalated ? plus(d.createdAt, TIMERS.disputeEscalateMs) : null;
       if (role === "admin" || !d) return none(deadlineAt);
       if (role !== d.raisedByRole && !d.responded) return { nextAction: "respond_dispute", deadlineAt };
+      // The raiser can settle at the respondent's offer any time until a ruling.
+      if (role === d.raisedByRole && d.responded && d.offered && !d.resolved) return { nextAction: "accept_offer", deadlineAt };
       return { nextAction: "wait_ruling", deadlineAt };
     }
     case "COMPLETED": {

@@ -1,19 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useFocusEffect } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { usePolling } from "../../src/hooks/usePolling";
 import { useUnread } from "../../src/hooks/useUnread";
 import { badgeText } from "../../src/lib/chat";
+import { refreshOffers, resetOffers, useOfferCount } from "../../src/lib/offers";
 import { colors } from "../../src/lib/theme";
+
+const OFFERS_POLL_MS = 60_000;
 
 export default function TabsLayout() {
   const unread = useUnread();
   const { refresh } = unread;
-  // Coming back to the tabs (e.g. from a chat) refreshes the badge straight away.
+  const offers = useOfferCount();
+  // Coming back to the tabs (e.g. from a chat or a booking) refreshes the badges straight away.
   useFocusEffect(
     useCallback(() => {
       void refresh();
+      void refreshOffers();
     }, [refresh]),
   );
+  // Settlement offers waiting for me (bookings tab badge), polled while in the foreground.
+  usePolling(refreshOffers, OFFERS_POLL_MS);
+  useEffect(() => resetOffers, []);
 
   return (
     <Tabs
@@ -39,6 +48,8 @@ export default function TabsLayout() {
         name="bookings"
         options={{
           title: "My bookings",
+          tabBarBadge: badgeText(offers),
+          tabBarBadgeStyle: { backgroundColor: colors.accent, fontSize: 11 },
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? "calendar" : "calendar-outline"} size={size} color={color} />
           ),

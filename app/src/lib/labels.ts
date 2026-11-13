@@ -29,6 +29,7 @@ export const NEXT_ACTION_LABEL: Record<NextAction, string> = {
   review_return: "Review the returned item",
   wait_review: "Lender is reviewing the return",
   respond_dispute: "Respond to the dispute",
+  accept_offer: "Settlement offer waiting",
   wait_ruling: "Waiting for the society admin's ruling",
   refund_deposit: "Refund the deposit via UPI",
   confirm_refund: "Confirm you got the deposit back",

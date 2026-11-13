@@ -4,7 +4,7 @@ import { LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ApiError, logout } from "@/lib/api";
+import { ApiError, getTokens, logout } from "@/lib/api";
 import { SessionProvider, useMeLoader, useSession, useSignedIn } from "@/lib/session";
 import { useOfferCount, useOfferPoller } from "@/lib/offers";
 import { useAwaitingNominations, useNominationsPoller } from "@/lib/nominations";
@@ -29,8 +29,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const signedIn = useSignedIn();
   const me = useMeLoader(signedIn);
 
+  // Read the token store directly: during hydration useSignedIn() still returns its
+  // server snapshot (false), and redirecting on that sent every reload / emailed
+  // deep link to /login although the tokens were there.
   useEffect(() => {
-    if (!signedIn) router.replace(loginUrl());
+    const t = getTokens();
+    if (t.access === null && t.refresh === null) router.replace(loginUrl());
   }, [signedIn, router]);
 
   useEffect(() => {

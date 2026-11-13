@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FileCheck2, Loader2, Plus } from "lucide-react";
+import { CheckCircle2, FileCheck2, Loader2, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { formatIST } from "@/lib/format";
 import { useAction, useAsync } from "@/lib/hooks";
+import { awaitingNominations, setNominationsFrom } from "@/lib/nominations";
 import { useSession } from "@/lib/session";
 import type { AdminRequest } from "@/lib/types";
 
@@ -56,7 +57,15 @@ function MyRequests() {
     }
   }, [list.data, adminOf, refresh]);
 
+  // Keep the header's green Profile dot in step with what this page shows.
+  useEffect(() => {
+    if (list.data) setNominationsFrom(list.data);
+  }, [list.data]);
+
   const canJoinAdmin = approved.filter((m) => m.role !== "society_admin");
+  // Nominations waiting for an answer go first, in a highlighted card.
+  const awaiting = awaitingNominations(list.data);
+  const ordered = list.data ? [...awaiting, ...list.data.filter((r) => !awaiting.includes(r))] : [];
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -108,10 +117,11 @@ function MyRequests() {
         />
       ) : (
         <ul className="space-y-3">
-          {list.data.map((r) => (
+          {ordered.map((r) => (
             <RequestCard
               key={r.id}
               r={r}
+              highlight={awaiting.includes(r)}
               onChanged={(next) => list.setData(list.data!.map((x) => (x.id === next.id ? next : x)))}
             />
           ))}
@@ -130,10 +140,8 @@ function NominationAnswer({ r, onChanged }: { r: AdminRequest; onChanged: (r: Ad
   const stmtErr = lengthError("Note", statement, 0, 1000);
 
   return (
-    <div className="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm">
-      <p>
-        {`${r.nominatedBy?.displayName ?? "An admin"} nominated you as a co-admin of ${r.societyName}. Admins approve residents, issue invite codes and settle disputes.`}
-      </p>
+    <div className="mt-3 space-y-3 rounded-xl border border-emerald-200 bg-white/70 p-3 text-sm">
+      <p>Co-admins approve residents who join, issue invite codes and help settle disputes between neighbours.</p>
       <p className="text-xs text-fg-muted">
         To accept, upload your ID proof. BorrowVault approves you automatically 48 hours later, unless its team rejects it first.
       </p>
@@ -173,7 +181,7 @@ function NominationAnswer({ r, onChanged }: { r: AdminRequest; onChanged: (r: Ad
   );
 }
 
-function RequestCard({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRequest) => void }) {
+function RequestCard({ r, highlight, onChanged }: { r: AdminRequest; highlight?: boolean; onChanged: (r: AdminRequest) => void }) {
   const action = useAction();
   const [showDocs, setShowDocs] = useState(false);
   const p = r.proposedSociety;
@@ -187,7 +195,20 @@ function RequestCard({ r, onChanged }: { r: AdminRequest; onChanged: (r: AdminRe
 
   return (
     <li>
-      <Panel>
+      <Panel className={highlight ? "border-2 border-emerald-400 bg-emerald-50" : undefined}>
+        {highlight ? (
+          <div className="mb-3 flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg">
+              <ShieldCheck className="size-5" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">You&apos;ve been nominated</p>
+              <p className="text-lg font-semibold text-emerald-950">
+                {`${r.nominatedBy?.displayName || "An admin of your society"} has nominated you to become an admin of ${r.societyName}`}
+              </p>
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">{KIND_LABEL[r.kind]}</p>

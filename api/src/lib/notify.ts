@@ -1,7 +1,11 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { memberships, users } from "../db/schema.js";
+import { env } from "../env.js";
 import { sendMail, simpleMail } from "./mailer.js";
+import { nominationMail, nominationPushMessages } from "./nominationNotice.js";
+import { sendPush } from "./push.js";
+import { bookingPushTargets } from "./pushTokens.js";
 
 // FIRE-AND-FORGET: every export starts the send in the background and returns
 // immediately, so an action (or a Temporal update) never waits on, or fails
@@ -74,5 +78,38 @@ async function notifyPlatformAdminsNow(subject: string, text: string, link?: str
     await send(rows.map((r) => r.email), subject, text, link);
   } catch (err) {
     log(`notifyPlatformAdmins failed: ${String(err)}`);
+  }
+}
+
+/**
+ * A new co-admin nomination (api/ROUTES.md "Co-admin nominations"): the
+ * nominee gets a proper email and a push on every registered device.
+ */
+export async function notifyNominee(
+  nomineeId: string,
+  n: { requestId: string; nominatorName: string; societyName: string },
+): Promise<void> {
+  void notifyNomineeNow(nomineeId, n);
+}
+
+async function notifyNomineeNow(
+  nomineeId: string,
+  n: { requestId: string; nominatorName: string; societyName: string },
+): Promise<void> {
+  const notice = { ...n, url: `${env.WEB_ORIGIN}/admin-requests` };
+  try {
+    const [row] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(and(eq(users.id, nomineeId), isNull(users.deletedAt)));
+    if (row) await sendMail([nominationMail(row.email, notice)], log);
+  } catch (err) {
+    log(`notifyNominee mail failed: ${String(err)}`);
+  }
+  try {
+    const tokens = await bookingPushTargets(nomineeId);
+    if (tokens.length) await sendPush(nominationPushMessages(tokens, notice));
+  } catch (err) {
+    log(`notifyNominee push failed: ${String(err)}`);
   }
 }

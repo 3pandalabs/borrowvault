@@ -26,7 +26,7 @@ import {
 } from "../lib/adminRequests.js";
 import { approvedMembership, isPlatformAdmin, requireSocietyAdmin } from "../lib/authz.js";
 import { DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
-import { notifyPlatformAdmins, notifyUsers } from "../lib/notify.js";
+import { notifyNominee, notifyPlatformAdmins, notifyUsers } from "../lib/notify.js";
 import { memberCountSql } from "../lib/societyTier.js";
 import { presignDownload } from "../plugins/r2.js";
 import { registerRateLimit } from "../plugins/rateLimit.js";
@@ -388,12 +388,11 @@ export async function adminRequestRoutes(fastify: FastifyInstance) {
         throw err;
       }
       const [view] = await views([row]);
-      await notifyUsers(
-        [target.userId],
-        "You were nominated as a co-admin",
-        `${view.nominatedBy?.displayName || "An admin"} nominated you as a co-admin of "${view.societyName}". To accept, open your admin requests and upload your ID proof. You can also decline.`,
-        "/admin-requests",
-      );
+      await notifyNominee(target.userId, {
+        requestId: view.id,
+        nominatorName: view.nominatedBy?.displayName ?? "",
+        societyName: view.societyName,
+      });
       return reply.code(201).send(view);
     },
   );

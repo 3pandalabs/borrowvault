@@ -2,7 +2,9 @@
 
 import { Ban, CheckCircle2, ChevronRight, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { NominationBanners } from "@/components/adminRequests";
+import { refreshNominations, useAwaitingNominations } from "@/lib/nominations";
 import { ErrorText, Field, PageHeader, Panel, PanelTitle, TrustBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +21,11 @@ export default function ProfilePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const nominations = useAwaitingNominations();
+  // Fresh on every visit to Profile, not just on the header's 2-minute poll.
+  useEffect(() => {
+    void refreshNominations();
+  }, []);
 
   const vpa = upiVpa.trim();
   const vpaError = vpa && !VPA_RE.test(vpa) ? "That doesn't look like a UPI ID. It's in the form name@bank, e.g. priya.s@okhdfcbank." : null;
@@ -49,6 +56,7 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader title="Your profile" subtitle={user.email} />
+      <NominationBanners nominations={nominations} />
       <Panel className="mb-4">
         <PanelTitle>Trust</PanelTitle>
         <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -144,7 +152,18 @@ export default function ProfilePage() {
           )}
           <li>
             <Link href="/admin-requests" className="flex items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-zinc-50">
-              My admin requests <ChevronRight className="size-4 text-fg-muted" />
+              <span className="flex items-center gap-2">
+                My admin requests
+                {nominations.length ? (
+                  <span
+                    className="inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-semibold text-accent-fg"
+                    aria-label={`${nominations.length} nomination${nominations.length > 1 ? "s" : ""} waiting for you`}
+                  >
+                    {nominations.length}
+                  </span>
+                ) : null}
+              </span>
+              <ChevronRight className="size-4 text-fg-muted" />
             </Link>
           </li>
         </ul>

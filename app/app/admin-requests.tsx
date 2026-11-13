@@ -1,10 +1,13 @@
 import { Stack } from "expo-router";
-import { useState } from "react";
-import { Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Text, View } from "react-native";
+import { NominationBox } from "../src/components/Nomination";
 import { Button, Card, Chip, Empty, ErrorText, KV, Loading, P, Screen } from "../src/components/ui";
 import { useLoader } from "../src/hooks/useAsync";
 import { useAuth } from "../src/hooks/useAuth";
-import { adminRequestError, listMyAdminRequests, withdrawAdminRequest } from "../src/lib/api";
+import { useNominations } from "../src/hooks/useNominations";
+import { adminRequestError, declineNomination, listMyAdminRequests, withdrawAdminRequest } from "../src/lib/api";
+import { awaitingNominations } from "../src/lib/nominations";
 import { formatDateTime } from "../src/lib/format";
 import { openWeb } from "../src/lib/openWeb";
 import { myAdminRequestsUrl } from "../src/lib/web";
@@ -30,6 +33,14 @@ const KIND: Record<AdminRequest["kind"], string> = {
 export default function MyAdminRequests() {
   const { refresh } = useAuth();
   const list = useLoader(listMyAdminRequests);
+  const { setFrom } = useNominations();
+  // Keep the green Profile badge in step with what this screen shows.
+  useEffect(() => {
+    if (list.data) setFrom(list.data);
+  }, [list.data, setFrom]);
+  // Nominations waiting for an answer go first, in a highlighted card.
+  const awaiting = awaitingNominations(list.data);
+  const ordered = list.data ? [...awaiting, ...list.data.filter((r) => !awaiting.includes(r))] : [];
 
   return (
     <Screen refreshing={list.loading && !!list.data} onRefresh={() => {
@@ -46,10 +57,11 @@ export default function MyAdminRequests() {
       {list.data?.length === 0 ? (
         <Empty title="No admin requests" body="Requests you send from the BorrowVault website show up here." />
       ) : null}
-      {list.data?.map((r) => (
+      {ordered.map((r) => (
         <RequestCard
           key={r.id}
           r={r}
+          highlight={awaiting.includes(r)}
           onChanged={(next) => {
             list.setData((cur) => cur?.map((x) => (x.id === next.id ? next : x)) ?? cur);
           }}
@@ -61,9 +73,11 @@ export default function MyAdminRequests() {
 
 function RequestCard({
   r,
+  highlight,
   onChanged,
 }: {
   r: AdminRequest;
+  highlight?: boolean;
   onChanged: (r: AdminRequest) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -86,6 +100,44 @@ function RequestCard({
     }
   }
 
+  function decline() {
+    Alert.alert("Decline this nomination?", `${r.nominatedBy?.displayName || "The admin"} will be told you declined.`, [
+      { text: "Keep it", style: "cancel" },
+      {
+        text: "Decline",
+        style: "destructive",
+        onPress: () => {
+          setBusy(true);
+          setError(null);
+          declineNomination(r.id)
+            .then(onChanged)
+            .catch((e: unknown) => setError(adminRequestError(e)))
+            .finally(() => setBusy(false));
+        },
+      },
+    ]);
+  }
+
+  if (highlight) {
+    return (
+      <NominationBox
+        kicker="You've been nominated"
+        title={`${r.nominatedBy?.displayName || "An admin of your society"} has nominated you to become an admin of ${r.societyName}`}
+      >
+        <P>Co-admins approve residents who join, issue invite codes and help settle disputes between neighbours.</P>
+        <P muted>
+          To accept, upload your own ID proof on the BorrowVault website (a masked Aadhaar, PAN, passport or driving
+          licence). You become an admin automatically 48 hours after accepting, unless BorrowVault rejects it first.
+        </P>
+        <KV k="Role" v={r.committeeRole} />
+        <KV k="Nominated" v={formatDateTime(r.createdAt)} />
+        <ErrorText>{error}</ErrorText>
+        <Button title="Accept: upload ID on the website" icon="open-outline" onPress={() => void answer()} disabled={busy} />
+        <Button title="Decline" variant="secondary" onPress={decline} busy={busy} />
+      </NominationBox>
+    );
+  }
+
   return (
     <Card>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -96,12 +148,6 @@ function RequestCard({
         {`${KIND[r.kind]} · ${r.committeeRole}`}
         {r.nominatedBy ? ` · nominated by ${r.nominatedBy.displayName}` : ""}
       </P>
-      {r.kind === "nominate_admin" && r.status === "nominated" ? (
-        <>
-          <P>To accept, upload your ID proof on the BorrowVault website. You can also decline there.</P>
-          <Button title="Answer on the website" icon="open-outline" onPress={() => void answer()} />
-        </>
-      ) : null}
       {r.kind === "nominate_admin" && r.status === "pending" && r.autoApproveAt ? (
         <P muted>{`You become an admin on ${formatDateTime(r.autoApproveAt)}, unless BorrowVault rejects it first.`}</P>
       ) : null}

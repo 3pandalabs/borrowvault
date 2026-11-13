@@ -1,9 +1,12 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, Switch, Text, View } from "react-native";
+import { GreenCount, NominationBox } from "../../src/components/Nomination";
 import { Button, Card, Chip, ErrorText, Field, H2, KV, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
+import { useNominations } from "../../src/hooks/useNominations";
+import { awaitingNominations, nominationHeadline } from "../../src/lib/nominations";
 import { doUnblock } from "../../src/components/Safety";
 import { listBlocks, listListings, listMyAdminRequests, updateListing, updateMe } from "../../src/lib/api";
 import { formatDate } from "../../src/lib/format";
@@ -21,6 +24,13 @@ export default function Profile() {
 
   const mine = useLoader(() => listListings({ ownerId: "me" }), [user?.id, approved.length]);
   const adminRequests = useLoader(listMyAdminRequests, [user?.id]);
+  const nominationsCtx = useNominations();
+  const setNominationsFrom = nominationsCtx.setFrom;
+  // This screen already loads the list: keep the tab badge in step with it.
+  useEffect(() => {
+    if (adminRequests.data) setNominationsFrom(adminRequests.data);
+  }, [adminRequests.data, setNominationsFrom]);
+  const awaiting = adminRequests.data ? awaitingNominations(adminRequests.data) : nominationsCtx.awaiting;
 
   async function setStatus(l: ListingSummary, status: "active" | "paused" | "archived") {
     await save.run(() => updateListing(l.id, { status }));
@@ -31,6 +41,12 @@ export default function Profile() {
 
   return (
     <Screen onRefresh={() => void refresh()}>
+      {awaiting.map((r) => (
+        <NominationBox key={r.id} kicker="You've been nominated" title={nominationHeadline(r)}>
+          <P>Accept by uploading your ID proof, or decline. Co-admins approve residents, issue invite codes and settle disputes.</P>
+          <Button title="Review nomination" icon="shield-checkmark" onPress={() => router.push("/admin-requests")} />
+        </NominationBox>
+      ))}
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <H2>{user.displayName}</H2>
@@ -71,6 +87,7 @@ export default function Profile() {
       <SocietyAdminCard
         memberships={approved}
         requests={adminRequests.data ?? []}
+        awaiting={awaiting.length}
         onOpenRequests={() => router.push("/admin-requests")}
       />
 
@@ -113,10 +130,13 @@ export default function Profile() {
 function SocietyAdminCard({
   memberships,
   requests,
+  awaiting,
   onOpenRequests,
 }: {
   memberships: Membership[];
   requests: AdminRequest[];
+  /** Co-admin nominations waiting for this user's answer (green count). */
+  awaiting: number;
   onOpenRequests: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -134,7 +154,12 @@ function SocietyAdminCard({
     <Card>
       <H2
         right={
-          requests.length > 0 ? <Button title="My requests" variant="ghost" onPress={onOpenRequests} /> : undefined
+          requests.length > 0 ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <GreenCount n={awaiting} />
+              <Button title="My admin requests" variant="ghost" onPress={onOpenRequests} />
+            </View>
+          ) : undefined
         }
       >
         Society admin

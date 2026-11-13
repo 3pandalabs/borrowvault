@@ -71,6 +71,7 @@ vi.mock("../src/lib/notify.js", () => ({
   notifyUsers: vi.fn(async () => undefined),
   notifySocietyAdmins: vi.fn(async () => undefined),
   notifyPlatformAdmins: vi.fn(async () => undefined),
+  notifyNominee: vi.fn(async () => undefined),
 }));
 
 vi.mock("../src/lib/authz.js", async (orig) => {
@@ -288,6 +289,9 @@ describe("POST /admin/societies/:id/nominations", () => {
       values: { kind: "nominate_admin", status: "nominated", requesterId: NOMINEE, nominatedBy: ME, societyId: SOCIETY },
     });
     expect(res.json()).toMatchObject({ status: "nominated", societyName: "Lake View", nominatedBy: { id: ME, displayName: "Asha" } });
+    // The nominee gets the proper notice (email + push), naming the nominator and the society.
+    const { notifyNominee } = await import("../src/lib/notify.js");
+    expect(notifyNominee).toHaveBeenCalledWith(NOMINEE, { requestId: REQ, nominatorName: "Asha", societyName: "Lake View" });
   });
   it("a resident can't nominate (403); a non-member gets 404", async () => {
     fake.membership = approvedResident;

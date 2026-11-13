@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ApiError, logout } from "@/lib/api";
 import { SessionProvider, useMeLoader, useSession, useSignedIn } from "@/lib/session";
 import { useOfferCount, useOfferPoller } from "@/lib/offers";
+import { useAwaitingNominations, useNominationsPoller } from "@/lib/nominations";
 import { useUnread, useUnreadPoller } from "@/lib/unread";
 import { cn } from "@/lib/utils";
 import { Backdrop } from "./Backdrop";
@@ -64,8 +65,10 @@ function Header() {
   const unread = useUnread()?.total ?? 0;
   useOfferPoller(approved.length > 0);
   const offers = useOfferCount();
+  useNominationsPoller();
+  const nominated = useAwaitingNominations().length > 0;
 
-  const links: { href: string; label: string; badge?: number; badgeLabel?: string }[] = [
+  const links: { href: string; label: string; badge?: number; badgeLabel?: string; dot?: string }[] = [
     { href: "/home", label: "Home" },
     ...(approved.length
       ? [
@@ -76,7 +79,8 @@ function Header() {
     // Chats stay readable after a membership is revoked, so any membership (or
     // an unread message) is enough to show the inbox.
     ...(memberships.length || unread ? [{ href: "/messages", label: "Messages", badge: unread }] : []),
-    { href: "/profile", label: "Profile" },
+    // Green dot while a co-admin nomination waits for this user's answer.
+    { href: "/profile", label: "Profile", ...(nominated ? { dot: "You've been nominated as a co-admin" } : {}) },
     ...adminOf.map((m) => ({
       href: `/admin/${m.societyId}`,
       label: adminOf.length > 1 ? `Admin · ${m.societyName}` : "Society admin",
@@ -109,6 +113,13 @@ function Header() {
           {l.badge > 99 ? "99+" : l.badge}
         </span>
       ) : null}
+      {l.dot ? (
+        <span className="relative ml-1.5 inline-flex size-2.5 align-middle" title={l.dot}>
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
+          <span className="relative inline-flex size-2.5 rounded-full bg-accent" />
+          <span className="sr-only">{l.dot}</span>
+        </span>
+      ) : null}
     </Link>
   ));
 
@@ -138,8 +149,11 @@ function Header() {
           >
             <LogOut className="size-4" /> Sign out
           </button>
-          <button className="rounded-full p-2 md:hidden" aria-label="Menu" onClick={() => setOpen((o) => !o)}>
+          <button className="relative rounded-full p-2 md:hidden" aria-label="Menu" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
+            {nominated && !open ? (
+              <span className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-accent ring-2 ring-white" aria-hidden />
+            ) : null}
           </button>
         </div>
       </div>

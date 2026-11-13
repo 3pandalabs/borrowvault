@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, Building2, ChevronDown, ChevronRight, FileCheck2, Loader2 } from "lucide-react";
+import { BadgeCheck, Building2, ChevronDown, ChevronRight, FileCheck2, Loader2, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -9,7 +9,7 @@ import { AdminRequestsQueue, PlatformSocietyAdmins } from "@/components/platform
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createSociety, errorMessage, listPlatformSocieties, verifySociety } from "@/lib/api";
+import { createSociety, errorMessage, listPlatformSocieties, tryGeo, verifySociety } from "@/lib/api";
 import { useAction, useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
 import type { Society } from "@/lib/types";
@@ -118,6 +118,18 @@ function Societies() {
     (form.radius && (!Number.isInteger(radius) || radius < 50 || radius > 5000) && "Radius: whole metres, 50 to 5,000.") ||
     null;
 
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoNote, setGeoNote] = useState<string | null>(null);
+  async function useMyLocation() {
+    setGeoBusy(true);
+    setGeoNote(null);
+    const g = await tryGeo();
+    setGeoBusy(false);
+    if (!g) return setGeoNote("Couldn't get your location. Allow location access in your browser and try again.");
+    setForm((f) => ({ ...f, lat: g.lat.toFixed(6), lng: g.lng.toFixed(6) }));
+    setGeoNote(`Location captured (accurate to about ${g.accuracyM} m).`);
+  }
+
   const pilots = (societies.data ?? []).filter((s) => s.tier === "pilot");
 
   return (
@@ -163,7 +175,7 @@ function Societies() {
                     {s.tier === "pilot" ? <Badge variant="warn">pilot</Badge> : null}
                     <span className="text-xs text-fg-muted">{`${s.memberCount} members`}</span>
                     <span className="hidden text-xs text-fg-muted sm:inline">
-                      {s.settings?.depositMode === "p2p" ? "P2P deposits" : "Declared deposits"} · {s.radiusM} m
+                      {s.settings?.depositMode === "p2p" ? "P2P deposits" : "Declared deposits"}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
@@ -197,6 +209,10 @@ function Societies() {
           onSubmit={(e) => {
             e.preventDefault();
             if (err) return;
+            if (!form.lat || !form.lng) {
+              setGeoNote("Tap “Use my current location” first.");
+              return;
+            }
             action.run(async () => {
               const s = await createSociety({
                 name: form.name.trim(),
@@ -219,17 +235,22 @@ function Societies() {
               <Input id="city" required value={form.city} onChange={set("city")} />
             </Field>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Centre latitude" htmlFor="lat">
-              <Input id="lat" required inputMode="decimal" value={form.lat} onChange={set("lat")} />
-            </Field>
-            <Field label="Centre longitude" htmlFor="lng">
-              <Input id="lng" required inputMode="decimal" value={form.lng} onChange={set("lng")} />
-            </Field>
-            <Field label="Radius (m)" htmlFor="rad">
-              <Input id="rad" required inputMode="numeric" value={form.radius} onChange={set("radius")} />
-            </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={useMyLocation} disabled={geoBusy}>
+              {geoBusy ? <Loader2 className="animate-spin" /> : <MapPin />} Use my current location
+            </Button>
+            {form.lat && form.lng && !err ? (
+              <a
+                href={`https://www.google.com/maps?q=${lat},${lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-accent hover:underline"
+              >
+                Check on Google Maps
+              </a>
+            ) : null}
           </div>
+          {geoNote ? <p className="text-xs text-fg-muted">{geoNote}</p> : null}
           <Field
             label="Society admin's email"
             htmlFor="email"

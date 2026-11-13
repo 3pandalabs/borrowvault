@@ -9,9 +9,9 @@ import { useAction, useAsync } from "@/lib/hooks";
 import type { AdminRequestStatus, PlatformAdminRequest } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DocLink, KIND_LABEL, lengthError, mapsUrl, RequestStatusBadge, SocietyAdminsList } from "./adminRequests";
-import { EmptyState, ErrorText, Field, LoadError, Loading, Panel, PanelTitle } from "./common";
+import { EmptyState, ErrorText, LoadError, Loading, Panel, PanelTitle } from "./common";
 import { Button } from "./ui/button";
-import { Input, Textarea } from "./ui/input";
+import { Textarea } from "./ui/input";
 
 const STATUS_TABS: AdminRequestStatus[] = ["pending", "nominated", "approved", "rejected", "withdrawn", "declined", "cancelled"];
 // docUrls are presigned for 10 minutes; refetch a little before that.
@@ -137,44 +137,23 @@ function RequestReview({
 }) {
   const p = r.proposedSociety;
   const [note, setNote] = useState("");
-  const [geo, setGeo] = useState({
-    lat: p ? String(p.centerLat) : "",
-    lng: p ? String(p.centerLng) : "",
-    radius: p ? String(p.radiusM) : "",
-  });
   const [rejectNote, setRejectNote] = useState("");
   const approve = useAction();
   const reject = useAction();
 
-  const lat = Number(geo.lat);
-  const lng = Number(geo.lng);
-  const radius = Number(geo.radius);
-  const geoErr = p
-    ? (Number.isNaN(lat) || lat < -90 || lat > 90 || !geo.lat.trim() ? "Latitude must be between -90 and 90." : null) ??
-      (Number.isNaN(lng) || lng < -180 || lng > 180 || !geo.lng.trim() ? "Longitude must be between -180 and 180." : null) ??
-      (!Number.isInteger(radius) || radius < 50 || radius > 5000 ? "Radius: whole metres, 50 to 5,000." : null)
-    : null;
   const noteErr = lengthError("Note", note, 0, 1000);
   const rejectErr = lengthError("Reason", rejectNote, 5, 1000);
   const busy = approve.busy || reject.busy;
 
   function doApprove() {
-    if (geoErr || noteErr) return;
-    const overrides =
-      p && !geoErr
-        ? {
-            ...(lat !== p.centerLat ? { centerLat: lat } : {}),
-            ...(lng !== p.centerLng ? { centerLng: lng } : {}),
-            ...(radius !== p.radiusM ? { radiusM: radius } : {}),
-          }
-        : {};
+    if (noteErr) return;
     const what =
       r.kind === "new_society"
         ? `Create "${r.societyName}" and make ${r.requester.displayName} its admin?`
         : `Make ${r.requester.displayName} an admin of ${r.societyName}?`;
     if (!window.confirm(what)) return;
     approve
-      .run(() => api.approveAdminRequest(r.id, { ...(note.trim() ? { note: note.trim() } : {}), ...overrides }), api.errorMessage)
+      .run(() => api.approveAdminRequest(r.id, note.trim() ? { note: note.trim() } : {}), api.errorMessage)
       .then((ok) => ok && onChanged());
   }
 
@@ -237,14 +216,12 @@ function RequestReview({
             <dd>{p.city}</dd>
             <dt className="text-fg-muted">Address</dt>
             <dd className="whitespace-pre-line">{p.address}</dd>
-            <dt className="text-fg-muted">Centre</dt>
+            <dt className="text-fg-muted">Location</dt>
             <dd>
               <a href={mapsUrl(p.centerLat, p.centerLng)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
-                <MapPin className="size-3.5" /> {p.centerLat}, {p.centerLng}
+                <MapPin className="size-3.5" /> Check on Google Maps
               </a>
             </dd>
-            <dt className="text-fg-muted">Radius</dt>
-            <dd>{p.radiusM} m</dd>
             <dt className="text-fg-muted">Their flat</dt>
             <dd>
               {p.towerName} · {p.flatNo} ({p.occupancy})
@@ -303,28 +280,6 @@ function RequestReview({
         <div className="space-y-4 border-t border-line pt-4">
           <div className="space-y-3">
             <h3 className="text-sm font-medium">Approve</h3>
-            {p ? (
-              <div>
-                <p className="mb-2 text-xs text-fg-muted">Adjust the geofence if their pin or radius looks off on the map.</p>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Field label="Latitude" htmlFor="olat">
-                    <Input id="olat" inputMode="decimal" value={geo.lat} onChange={(e) => setGeo((g) => ({ ...g, lat: e.target.value }))} />
-                  </Field>
-                  <Field label="Longitude" htmlFor="olng">
-                    <Input id="olng" inputMode="decimal" value={geo.lng} onChange={(e) => setGeo((g) => ({ ...g, lng: e.target.value }))} />
-                  </Field>
-                  <Field label="Radius (m)" htmlFor="orad">
-                    <Input id="orad" inputMode="numeric" value={geo.radius} onChange={(e) => setGeo((g) => ({ ...g, radius: e.target.value }))} />
-                  </Field>
-                </div>
-                {!geoErr && (lat !== p.centerLat || lng !== p.centerLng) ? (
-                  <a href={mapsUrl(lat, lng)} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-accent hover:underline">
-                    Check the adjusted point on Google Maps
-                  </a>
-                ) : null}
-                <ErrorText>{geoErr}</ErrorText>
-              </div>
-            ) : null}
             <Textarea
               placeholder="Note to the requester (optional)"
               maxLength={1000}
@@ -333,7 +288,7 @@ function RequestReview({
               onChange={(e) => setNote(e.target.value)}
             />
             <ErrorText>{noteErr}</ErrorText>
-            <Button disabled={busy || !!geoErr || !!noteErr} onClick={doApprove}>
+            <Button disabled={busy || !!noteErr} onClick={doApprove}>
               {approve.busy ? <Loader2 className="animate-spin" /> : <Check />} Approve
             </Button>
             <ErrorText>{approve.error}</ErrorText>

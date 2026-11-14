@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, Text, View } from "react-native";
-import { Button, Card, Chip, Countdown, ErrorText, Field, H2, KV, Loading, P, Screen, StateBadge, TrustBadge } from "../../../src/components/ui";
+import { Button, Card, Chip, Countdown, ErrorText, Field, FreeBadge, H2, KV, Loading, P, Screen, StateBadge, TrustBadge } from "../../../src/components/ui";
 import { useAction, useLoader } from "../../../src/hooks/useAsync";
 import {
   acceptBooking,
@@ -21,7 +21,7 @@ import {
 } from "../../../src/lib/api";
 import { counterParty, fenceFlag, myInspection, openUpi, otherInspection, PRE_ACTIVE, upiPayee } from "../../../src/lib/booking";
 import { formatDateTime, formatPaise, formatStateLabel } from "../../../src/lib/format";
-import { disputeCategoryLabel, isWaiting, nextActionLabel } from "../../../src/lib/labels";
+import { disputeCategoryLabel, feeLabel, isWaiting, nextActionLabel } from "../../../src/lib/labels";
 import { refreshOffers } from "../../../src/lib/offers";
 import { colors } from "../../../src/lib/theme";
 import type { BookingDetail } from "../../../src/lib/types";
@@ -57,7 +57,7 @@ export default function BookingDetailScreen() {
         </View>
         <KV k="From" v={formatDateTime(b.startsAt)} />
         <KV k="Return by" v={formatDateTime(b.endsAt)} />
-        <KV k="Fee" v={formatPaise(b.feePaise)} />
+        <KV k="Fee" v={feeLabel(b.feePaise)} />
         {b.depositPaise > 0 ? (
           <KV k={b.payment?.depositMode === "p2p" ? "Deposit (paid to lender)" : "Deposit (declared)"} v={formatPaise(b.depositPaise)} />
         ) : null}
@@ -131,9 +131,16 @@ function NextActionCard({ b, onUpdate }: { b: BookingDetail; onUpdate: (d: Booki
       body = (
         <>
           <P muted>
-            Pay {upiPayee(p?.feeUpiIntent) ?? "the lender"} directly with any UPI app. BorrowVault never holds your money.
+            Pay {upiPayee(p?.feeUpiIntent || p?.depositUpiIntent) ?? "the lender"} directly with any UPI app. BorrowVault never holds your money.
           </P>
-          <Button title={`Pay fee ${formatPaise(b.feePaise)} via UPI`} icon="wallet" onPress={() => void pay(p?.feeUpiIntent)} />
+          {b.feePaise > 0 ? (
+            <Button title={`Pay fee ${formatPaise(b.feePaise)} via UPI`} icon="wallet" onPress={() => void pay(p?.feeUpiIntent)} />
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <FreeBadge />
+              <P muted>No rental fee. Only the refundable deposit is paid.</P>
+            </View>
+          )}
           {p?.depositUpiIntent ? (
             <Button title={`Pay deposit ${formatPaise(b.depositPaise)} via UPI`} variant="secondary" icon="shield-checkmark" onPress={() => void pay(p.depositUpiIntent)} />
           ) : null}
@@ -159,8 +166,10 @@ function NextActionCard({ b, onUpdate }: { b: BookingDetail; onUpdate: (d: Booki
       body = (
         <>
           <P>
-            {b.borrower.displayName} says they paid {formatPaise(b.feePaise)}
-            {p?.depositMode === "p2p" && b.depositPaise ? ` + ${formatPaise(b.depositPaise)} deposit` : ""}
+            {b.borrower.displayName} says they paid{" "}
+            {b.feePaise > 0
+              ? `${formatPaise(b.feePaise)}${p?.depositMode === "p2p" && b.depositPaise ? ` + ${formatPaise(b.depositPaise)} deposit` : ""}`
+              : `the ${formatPaise(b.depositPaise)} deposit`}
             {p?.claimedAt ? ` on ${formatDateTime(p.claimedAt)}` : ""}.
           </P>
           {p?.utr ? <KV k="UTR" v={p.utr} /> : null}

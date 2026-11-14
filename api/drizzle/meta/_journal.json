@@ -64,6 +64,13 @@
       "when": 1794254181445,
       "tag": "0008_play_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794683041041,
+      "tag": "0009_free_listings",
+      "breakpoints": true
     }
   ]
 }

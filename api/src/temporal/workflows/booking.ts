@@ -19,6 +19,8 @@ import { HOUR_MS, overdueAt, TIMERS, type BookingState } from "../../booking/sta
 //
 //   REQUESTED        12 h                              -> EXPIRED
 //   ACCEPTED         2 h, no lender confirm            -> EXPIRED
+//                    (skipped when no payment is due, e.g. a free listing: the
+//                    accept activity returns DEPOSIT_HELD directly)
 //   DEPOSIT_HELD     at startsAt - 1 h                 -> HANDOVER_PENDING (skills -> ACTIVE)
 //   HANDOVER_PENDING at startsAt + 24 h                -> CANCELLED (+ refund if paid, lender no-show strike)
 //   ACTIVE           at max(endsAt, activatedAt + 1 h) -> OVERDUE; nudges +1/+6/+24 h, admin alert +48 h

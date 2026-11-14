@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { ACTION_COPY, Timeline } from "@/components/bookings";
 import { ChatHistoryPanel, OpenChatButton } from "@/components/chat";
-import { ErrorText, LoadError, Loading, Panel, PanelTitle, StateBadge, TrustBadge } from "@/components/common";
+import { ErrorText, FreeBadge, LoadError, Loading, Panel, PanelTitle, StateBadge, TrustBadge } from "@/components/common";
 import { DisputeSummary, EvidencePicker, RaiseDisputeForm, RatingForm, RespondDisputeForm, uploadEvidence } from "@/components/disputes";
 import { CaptureInApp, Comparison, InspectionView } from "@/components/inspections";
 import { Button } from "@/components/ui/button";
@@ -118,7 +118,7 @@ function Detail({ b, set, reload }: { b: BookingDetail; set: (b: BookingDetail) 
           <dl className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-fg-muted">Fee</dt>
-              <dd className="font-medium">{formatINR(b.feePaise)}</dd>
+              <dd className="font-medium">{b.feePaise === 0 ? <FreeBadge /> : formatINR(b.feePaise)}</dd>
             </div>
             {!isSkill ? (
               <div>
@@ -511,7 +511,13 @@ function PayStep({ b, set }: { b: BookingDetail; set: (b: BookingDetail) => void
         Pay {b.lender.displayName} directly over UPI. BorrowVault never holds the money; {b.lender.displayName} confirms when it
         arrives.
       </p>
-      <UpiPay intent={p.feeUpiIntent} label={`Rental fee, ${formatINR(p.feePaise)}`} />
+      {p.feePaise > 0 ? (
+        <UpiPay intent={p.feeUpiIntent} label={`Rental fee, ${formatINR(p.feePaise)}`} />
+      ) : (
+        <p className="flex items-center gap-2 text-sm">
+          <FreeBadge /> No rental fee: only the refundable deposit is paid.
+        </p>
+      )}
       {p.depositMode === "p2p" && p.depositUpiIntent ? (
         <UpiPay intent={p.depositUpiIntent} label={`Deposit, ${formatINR(p.depositPaise)} (refunded over UPI after a clean return)`} />
       ) : null}

@@ -103,6 +103,21 @@ export function PanelTitle({ children, aside }: { children: React.ReactNode; asi
   );
 }
 
+/** Prominent green "FREE" tag shown instead of a price on free listings. */
+export function FreeBadge({ className, large }: { className?: string; large?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full bg-emerald-600 font-bold uppercase tracking-wide text-white shadow-sm",
+        large ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs",
+        className,
+      )}
+    >
+      Free
+    </span>
+  );
+}
+
 export function TrustBadge({ trust, compact }: { trust?: Trust | null; compact?: boolean }) {
   if (!trust) return null;
   const variant: BadgeVariant = trust.completed === 0 ? "muted" : trust.score >= 4 ? "good" : trust.score >= 3 ? "info" : "warn";

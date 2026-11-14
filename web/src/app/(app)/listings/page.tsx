@@ -4,7 +4,7 @@ import { ImageOff, PackageSearch, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { RequireApproved } from "@/components/AppShell";
-import { EmptyState, LoadError, Loading, PageHeader, selectClass, TrustBadge } from "@/components/common";
+import { EmptyState, FreeBadge, LoadError, Loading, PageHeader, selectClass, TrustBadge } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,17 +31,19 @@ function Browse() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [mine, setMine] = useState(false);
+  const [onlyFree, setOnlyFree] = useState(false);
 
   const categories = useAsync(getCategories, "categories");
+  const free = onlyFree ? ("1" as const) : undefined;
   const listings = useAsync(
     // "Mine" = my own listings across all my societies, any status (ownerId=me).
-    () => (mine ? listListings({ ownerId: "me", kind, category, q }) : listListings({ societyId, kind, category, q })),
-    `${mine ? "me" : societyId}|${kind}|${category}|${q}`,
+    () => (mine ? listListings({ ownerId: "me", kind, category, q, free }) : listListings({ societyId, kind, category, q, free })),
+    `${mine ? "me" : societyId}|${kind}|${category}|${q}|${onlyFree}`,
   );
   const cats = (categories.data ?? []).filter((c) => !kind || c.kind === kind);
   const catLabel = (key: string) => categories.data?.find((c) => c.key === key)?.label ?? key;
   const rows = listings.data ?? [];
-  const filtered = !!(kind || category || q || mine);
+  const filtered = !!(kind || category || q || mine || onlyFree);
 
   return (
     <>
@@ -57,7 +59,7 @@ function Browse() {
         }
       />
 
-      <div className="mb-5 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+      <div className="mb-5 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]">
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -94,6 +96,11 @@ function Browse() {
         <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm">
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Mine
         </label>
+        <label
+          className={`flex h-10 items-center gap-2 rounded-lg border px-3 text-sm ${onlyFree ? "border-emerald-500 bg-emerald-50 font-medium text-emerald-800" : "border-slate-300 bg-white"}`}
+        >
+          <input type="checkbox" checked={onlyFree} onChange={(e) => setOnlyFree(e.target.checked)} /> Free
+        </label>
       </div>
 
       {listings.error ? (
@@ -121,6 +128,7 @@ function Browse() {
                     setQ("");
                     setQInput("");
                     setMine(false);
+                    setOnlyFree(false);
                   }}
                 >
                   Clear filters
@@ -140,9 +148,10 @@ function Browse() {
             <Link
               key={l.id}
               href={`/listings/${l.id}`}
-              className="group overflow-hidden rounded-2xl border border-line bg-white shadow-sm transition hover:shadow-md"
+              className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md ${l.isFree ? "border-emerald-400 ring-1 ring-emerald-400" : "border-line"}`}
             >
-              <div className="flex aspect-[4/3] items-center justify-center bg-zinc-100">
+              <div className="relative flex aspect-[4/3] items-center justify-center bg-zinc-100">
+                {l.isFree ? <FreeBadge large className="absolute left-3 top-3" /> : null}
                 {l.coverUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- short-lived presigned URL, see next.config.ts
                   <img src={l.coverUrl} alt="" className="h-full w-full object-cover" />
@@ -157,7 +166,11 @@ function Browse() {
                   {l.status === "removed" ? <Badge variant="bad">Removed</Badge> : l.status !== "active" ? <Badge variant="warn">{l.status}</Badge> : null}
                 </div>
                 <p className="font-medium group-hover:text-accent">{l.title}</p>
-                <p className="mt-1 text-sm text-fg">{priceLine(l)}</p>
+                {l.isFree ? (
+                  <p className="mt-1 text-sm font-semibold text-emerald-700">{l.kind === "skill" ? "Offered for free" : "Free to borrow"}</p>
+                ) : (
+                  <p className="mt-1 text-sm text-fg">{priceLine(l)}</p>
+                )}
                 {l.depositPaise ? <p className="text-xs text-fg-muted">Deposit {formatINR(l.depositPaise)}</p> : null}
                 {!mine ? (
                   <p className="mt-2 flex items-center gap-2 text-xs text-fg-muted">

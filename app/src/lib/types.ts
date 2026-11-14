@@ -147,6 +147,8 @@ export type ListingInput = {
   category: string;
   title: string;
   description: string;
+  /** Lent for free: the server ignores prices and every booking costs 0. */
+  isFree?: boolean;
   hourlyPaise?: number;
   dailyPaise?: number;
   weekendPaise?: number;
@@ -173,6 +175,7 @@ export type ListingSummary = {
   kind: ListingKind;
   category: string;
   title: string;
+  isFree: boolean;
   hourlyPaise: number | null;
   dailyPaise: number | null;
   weekendPaise: number | null;

@@ -22,7 +22,7 @@ import { notifyUsers, notifyPlatformAdmins, notifySocietyAdmins } from "../lib/n
 import { isPilot } from "../lib/pilot.js";
 import { societyTierOf } from "../lib/societyTier.js";
 import { depositProvider, netRefundDue, refundDueOnCancel, type DepositMode, type ResolutionOutcome } from "../payments/provider.js";
-import { priceFor, type Pricing } from "./pricing.js";
+import { paymentDue, priceFor, type Pricing } from "./pricing.js";
 import {
   CANCELLABLE_STATES,
   DISPUTABLE_STATES,
@@ -124,7 +124,8 @@ export async function createBooking(i: {
   listingId: string;
   startsAt: string;
   endsAt: string;
-  pricing: Pricing;
+  /** Required for a paid listing; a free listing defaults to "daily" (fee is 0 either way). */
+  pricing?: Pricing;
 }): Promise<Booking> {
   if (!/^[0-9a-f-]{36}$/i.test(i.listingId)) throw notFound();
   const [l] = await db.select().from(listings).where(eq(listings.id, i.listingId)).limit(1);
@@ -147,9 +148,11 @@ export async function createBooking(i: {
   const start = new Date(i.startsAt);
   const end = new Date(i.endsAt);
   if (start.getTime() < Date.now() - 5 * 60_000) throw invalid("startsAt is in the past");
+  const pricing: Pricing | undefined = i.pricing ?? (l.isFree ? "daily" : undefined);
+  if (!pricing) throw invalid("pricing is required");
   let fee: number;
   try {
-    fee = priceFor(l, i.pricing, start, end);
+    fee = priceFor(l, pricing, start, end);
   } catch (e) {
     throw invalid((e as Error).message);
   }
@@ -176,7 +179,7 @@ export async function createBooking(i: {
         listingId: l.id,
         lenderId: l.ownerId,
         borrowerId: i.borrowerId,
-        pricing: i.pricing,
+        pricing,
         startsAt: start,
         endsAt: end,
         feePaise: fee,
@@ -224,12 +227,16 @@ export async function accept(i: { bookingId: string; actorId: string }): Promise
   assertWindowOpen(b);
   const [l] = await db.select({ status: listings.status }).from(listings).where(eq(listings.id, b.listingId));
   if (l?.status !== "active") throw new DomainError("CONFLICT", "this listing is no longer active");
-  const [lender] = await db.select().from(users).where(eq(users.id, b.lenderId));
-  if (!lender.upiVpa) throw invalid("add your UPI ID to your profile before accepting");
   const mode = await societyDepositMode(b.societyId);
+  // Free listing with nothing to move over UPI: no payment step at all.
+  const due = paymentDue({ feePaise: b.feePaise, depositPaise: b.depositPaise, depositMode: mode });
+  if (due) {
+    const [lender] = await db.select().from(users).where(eq(users.id, b.lenderId));
+    if (!lender.upiVpa) throw invalid("add your UPI ID to your profile before accepting");
+  }
   try {
     const state = await db.transaction(async (tx) => {
-      const s = await transition(tx, {
+      let s = await transition(tx, {
         bookingId: b.id,
         from: "REQUESTED",
         to: "ACCEPTED",
@@ -237,6 +244,7 @@ export async function accept(i: { bookingId: string; actorId: string }): Promise
         reason: "lender_accepted",
         data: { depositMode: mode },
       });
+      const now = new Date();
       await tx
         .insert(bookingPayments)
         .values({
@@ -244,12 +252,29 @@ export async function accept(i: { bookingId: string; actorId: string }): Promise
           depositMode: mode,
           feePaise: b.feePaise,
           depositPaise: b.depositPaise,
-          depositStatus: "pending",
+          depositStatus: due ? "pending" : depositProvider(mode).onPaymentConfirmed(b.depositPaise),
+          ...(due ? {} : { confirmedAt: now }),
         })
         .onConflictDoNothing();
+      if (!due) {
+        // Same transaction: the booking never sits in ACCEPTED, so no 2 h payment timer runs.
+        s = await transition(tx, {
+          bookingId: b.id,
+          from: "ACCEPTED",
+          to: "DEPOSIT_HELD",
+          actorId: null,
+          reason: "no_payment_due",
+          data: { depositMode: mode },
+        });
+      }
       return s;
     });
-    await notifyUsers([b.borrowerId], "Your BorrowVault request was accepted", "Pay the rental fee via UPI within 2 hours to confirm.", link(b.id));
+    const body = !due
+      ? "Nothing to pay. Meet for the handover at the start time."
+      : b.feePaise > 0
+        ? "Pay the rental fee via UPI within 2 hours to confirm."
+        : "Pay the refundable deposit via UPI within 2 hours to confirm.";
+    await notifyUsers([b.borrowerId], "Your BorrowVault request was accepted", body, link(b.id));
     return state;
   } catch (err) {
     if (isExclusionViolation(err)) throw new DomainError("OVERLAP", "the item is already booked for that time");

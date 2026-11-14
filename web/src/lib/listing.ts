@@ -1,12 +1,18 @@
 import { formatINR } from "./format";
 import type { ListingSummary } from "./types";
 
-export function priceLine(l: Pick<ListingSummary, "hourlyPaise" | "dailyPaise" | "weekendPaise">) {
+export function priceLine(l: Pick<ListingSummary, "hourlyPaise" | "dailyPaise" | "weekendPaise"> & { isFree?: boolean }) {
+  if (l.isFree) return "Free";
   const parts: string[] = [];
   if (l.hourlyPaise) parts.push(`${formatINR(l.hourlyPaise)}/hr`);
   if (l.dailyPaise) parts.push(`${formatINR(l.dailyPaise)}/day`);
   if (l.weekendPaise) parts.push(`${formatINR(l.weekendPaise)}/weekend`);
   return parts.join(" · ") || "Price on request";
+}
+
+/** A booking fee for display: "Free" when nothing is charged (free listings), else ₹. */
+export function feeLabel(feePaise: number | null | undefined): string {
+  return feePaise === 0 ? "Free" : formatINR(feePaise);
 }
 
 // Mirrors api/src/lib/categories.ts labels; unknown keys fall back to "pet_sitting" -> "Pet sitting".

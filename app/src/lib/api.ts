@@ -375,7 +375,7 @@ export const getStorageUrl = (key: string) => get<{ url: string }>(`/storage/url
 
 export const getCategories = () => get<CategoryPreset[]>("/categories");
 /** `ownerId: "me"` lists my listings across all my societies. */
-export const listListings = (p: { societyId?: string; ownerId?: "me"; kind?: ListingKind; category?: string; q?: string }) =>
+export const listListings = (p: { societyId?: string; ownerId?: "me"; kind?: ListingKind; category?: string; q?: string; free?: "1" }) =>
   get<ListingSummary[]>(`/listings${qs(p)}`);
 export const getListing = (id: string) => get<Listing>(`/listings/${encodeURIComponent(id)}`);
 export const createListing = (body: ListingInput) => post<Listing>("/listings", body);
@@ -388,7 +388,7 @@ export const getAvailability = (id: string, from: string, to: string) =>
 
 // ---------------- Bookings ----------------
 
-export const createBooking = (body: { listingId: string; startsAt: string; endsAt: string; pricing: PricingUnit }) =>
+export const createBooking = (body: { listingId: string; startsAt: string; endsAt: string; pricing?: PricingUnit }) =>
   post<Booking>("/bookings", body);
 export const listBookings = (p: { role?: "lender" | "borrower"; state?: string }) =>
   get<Booking[]>(`/bookings${qs(p)}`);

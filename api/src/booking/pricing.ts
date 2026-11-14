@@ -26,9 +26,12 @@ export function weekendWindow(start: Date): { from: number; to: number } | null 
   return { from, to: from + 3 * DAY_MS };
 }
 
-/** Fee in integer paise. Throws a plain Error with a user-facing message. */
+/**
+ * Fee in integer paise. Throws a plain Error with a user-facing message.
+ * A free listing always costs 0; only the duration limits apply (no weekend window).
+ */
 export function priceFor(
-  listing: { hourlyPaise: number | null; dailyPaise: number | null; weekendPaise: number | null },
+  listing: { isFree?: boolean; hourlyPaise: number | null; dailyPaise: number | null; weekendPaise: number | null },
   pricing: Pricing,
   start: Date,
   end: Date,
@@ -36,6 +39,7 @@ export function priceFor(
   const ms = end.getTime() - start.getTime();
   if (!(ms > 0)) throw new Error("endsAt must be after startsAt");
   if (ms > MAX_BOOKING_MS) throw new Error("bookings are limited to 30 days");
+  if (listing.isFree) return 0;
   switch (pricing) {
     case "hourly":
       if (listing.hourlyPaise == null) throw new Error("this listing has no hourly price");
@@ -53,4 +57,13 @@ export function priceFor(
       return listing.weekendPaise;
     }
   }
+}
+
+/**
+ * Whether anything has to move over UPI before the handover: the fee, or a
+ * deposit the borrower pays to the lender (p2p mode). A declared deposit never
+ * moves. When false, accepting skips the payment step (ROUTES.md "Free listings").
+ */
+export function paymentDue(i: { feePaise: number; depositPaise: number; depositMode: "declared" | "p2p" }): boolean {
+  return i.feePaise > 0 || (i.depositMode === "p2p" && i.depositPaise > 0);
 }

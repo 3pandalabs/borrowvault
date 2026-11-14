@@ -2,11 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { Countdown, Empty, ErrorText, StateBadge } from "../../src/components/ui";
+import { Countdown, Empty, ErrorText, FREE_GREEN, StateBadge } from "../../src/components/ui";
 import { useLoader } from "../../src/hooks/useAsync";
 import { listBookings } from "../../src/lib/api";
-import { formatDateTime, formatPaise } from "../../src/lib/format";
-import { isWaiting, nextActionLabel } from "../../src/lib/labels";
+import { formatDateTime } from "../../src/lib/format";
+import { feeLabel, isWaiting, nextActionLabel } from "../../src/lib/labels";
 import { colors, radius } from "../../src/lib/theme";
 import type { Booking } from "../../src/lib/types";
 
@@ -66,7 +66,8 @@ function BookingRow({ b, onPress }: { b: Booking; onPress: () => void }) {
         {b.myRole === "lender" ? "To" : "From"} {other.displayName} · {other.towerName}-{other.flatNo}
       </Text>
       <Text style={s.meta}>
-        {formatDateTime(b.startsAt)} → {formatDateTime(b.endsAt)} · {formatPaise(b.feePaise)}
+        {formatDateTime(b.startsAt)} → {formatDateTime(b.endsAt)} ·{" "}
+        {b.feePaise === 0 ? <Text style={{ fontWeight: "700", color: FREE_GREEN }}>Free</Text> : feeLabel(b.feePaise)}
       </Text>
       {action ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

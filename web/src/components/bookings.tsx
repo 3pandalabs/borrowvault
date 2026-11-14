@@ -2,7 +2,8 @@
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { formatCountdown, formatINR, formatIST, formatRange } from "@/lib/format";
+import { formatCountdown, formatIST, formatRange } from "@/lib/format";
+import { feeLabel } from "@/lib/listing";
 import type { Booking, BookingEvent, NextAction } from "@/lib/types";
 import { StateBadge } from "./common";
 
@@ -41,7 +42,8 @@ export function BookingRow({ booking: b }: { booking: Booking }) {
         </div>
         <p className="text-sm text-fg-muted">
           {b.myRole === "lender" ? "Lending to" : b.myRole === "borrower" ? "Borrowing from" : "Between"} {other.displayName} (
-          {other.towerName}-{other.flatNo}) · {formatRange(b.startsAt, b.endsAt)} · {formatINR(b.feePaise)}
+          {other.towerName}-{other.flatNo}) · {formatRange(b.startsAt, b.endsAt)} ·{" "}
+          {b.feePaise === 0 ? <span className="font-semibold text-emerald-700">Free</span> : feeLabel(b.feePaise)}
         </p>
         {action ? (
           <p className={`mt-0.5 text-sm ${action.mine ? "font-medium text-accent" : "text-fg-muted"}`}>

@@ -44,7 +44,7 @@ vi.mock("../src/plugins/r2.js", async (orig) => {
 
 const RUN = Boolean(process.env.TEST_DATABASE_URL);
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { authPlugin } from "../src/auth/plugin.js";
@@ -68,6 +68,7 @@ import {
   users,
 } from "../src/db/schema.js";
 import { DomainError } from "../src/lib/errors.js";
+import { adminRoutes } from "../src/routes/admin.js";
 import { authRoutes } from "../src/routes/auth.js";
 import { bookingRoutes } from "../src/routes/bookings.js";
 import { chatRoutes } from "../src/routes/chat.js";
@@ -91,7 +92,7 @@ async function buildApp(): Promise<FastifyInstance> {
     if (err.code === "23505") return reply.code(409).send({ error: "conflict", code: "CONFLICT" });
     return reply.code(err.statusCode ?? 500).send({ error: String(err.message) });
   });
-  for (const r of [authRoutes, societyRoutes, listingRoutes, bookingRoutes, chatRoutes, userRoutes, moderationRoutes]) await app.register(r);
+  for (const r of [authRoutes, adminRoutes, societyRoutes, listingRoutes, bookingRoutes, chatRoutes, userRoutes, moderationRoutes]) await app.register(r);
   return app;
 }
 
@@ -216,6 +217,29 @@ describe.skipIf(!RUN)("play policy fixes (Postgres)", () => {
     // The owner still sees their own.
     const mine = await app.inject({ method: "GET", url: "/listings?ownerId=me", headers: auth(gone) });
     expect((mine.json() as { title: string }[]).map((l) => l.title)).toContain("Orphan ladder");
+  });
+
+  it("revoking a resident archives their listings in that society only", async () => {
+    const admin = await signup("revoker");
+    const res = await signup("removed");
+    await member(admin, society, { role: "society_admin" });
+    await member(res);
+    await member(res, other);
+    const here = await listing(res, "Revoked drill");
+    const paused = await listing(res, "Revoked tent");
+    await db.update(listings).set({ status: "paused" }).where(eq(listings.id, paused.id));
+    const elsewhere = await listing(res, "Other-society drill", other);
+    const [m] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, res.id), eq(memberships.societyId, society)));
+
+    const r = await app.inject({ method: "POST", url: `/admin/memberships/${m.id}/revoke`, headers: auth(admin), payload: {} });
+    expect(r.statusCode).toBe(200);
+    const status = async (id: string) => (await db.select().from(listings).where(eq(listings.id, id)))[0].status;
+    expect(await status(here.id)).toBe("archived");
+    expect(await status(paused.id)).toBe("archived");
+    expect(await status(elsewhere.id)).toBe("active");
   });
 
   describe("blocking", () => {

@@ -76,7 +76,7 @@ Afterwards: login with the old email → 401 `invalid_credentials` (no row has t
 |---|---|---|
 | GET | `/admin/societies/:id/memberships?status=pending` | → `[Membership & {user:{id,displayName,email,phone}, proofKey|null}]` |
 | POST | `/admin/memberships/:id/approve` · `/reject` | `{note?}` → `Membership`. Approve: 409 `{error: "society_full", code: "CONFLICT"}` when a pilot society already has 50 approved memberships (admins included). |
-| POST | `/admin/memberships/:id/revoke` | → `Membership` |
+| POST | `/admin/memberships/:id/revoke` | → `Membership`. Also archives that person's `active`/`paused` listings in this society (same transaction); bookings already in flight carry on. |
 | GET | `/admin/societies/:id/admins` | → `SocietyAdmin[]` (read-only; same shape as the platform list) |
 | POST | `/admin/societies/:id/towers` | `{name}` → tower |
 | GET | `/admin/societies/:id` | → `Society` (for the settings form) |

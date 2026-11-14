@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import { bookingSummaries, disputeView } from "../booking/view.js";
 import { db } from "../db/index.js";
-import { bookings, disputes, inviteCodes, memberships, societies, towers, users } from "../db/schema.js";
+import { bookings, disputes, inviteCodes, listings, memberships, societies, towers, users } from "../db/schema.js";
 import { isPlatformAdmin, requireSocietyAdmin } from "../lib/authz.js";
 import { conflict, DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
 import { societyAdminMayReview } from "../lib/adminRequests.js";
@@ -142,6 +142,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .where(and(eq(memberships.id, m.id), eq(memberships.status, m.status)))
         .returning({ id: memberships.id });
       if (!updated.length) throw conflict("membership changed, reload");
+      if (to === "revoked") {
+        // A removed resident's listings in this society go too (archived, as on account
+        // deletion); bookings already in flight carry on. Admin takedowns stay "removed".
+        await tx
+          .update(listings)
+          .set({ status: "archived", updatedAt: new Date() })
+          .where(and(eq(listings.ownerId, m.userId), eq(listings.societyId, m.societyId), inArray(listings.status, ["active", "paused"])));
+      }
     });
     await notifyUsers([m.userId], `Your BorrowVault membership was ${to}`, note ? `Note from the society admin: ${note}` : `Your membership was ${to}.`, "/");
     return membershipById(m.id);

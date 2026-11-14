@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useFocusEffect } from "expo-router";
 import { useCallback, useEffect } from "react";
+import { useJoinRequests } from "../../src/hooks/useJoinRequests";
 import { useNominations } from "../../src/hooks/useNominations";
 import { usePolling } from "../../src/hooks/usePolling";
 import { useUnread } from "../../src/hooks/useUnread";
@@ -16,13 +17,16 @@ export default function TabsLayout() {
   const offers = useOfferCount();
   const nominations = useNominations();
   const refreshNominations = nominations.refresh;
+  const joinRequests = useJoinRequests();
+  const refreshJoinRequests = joinRequests.refresh;
   // Coming back to the tabs (e.g. from a chat or a booking) refreshes the badges straight away.
   useFocusEffect(
     useCallback(() => {
       void refresh();
       void refreshOffers();
       void refreshNominations();
-    }, [refresh, refreshNominations]),
+      void refreshJoinRequests();
+    }, [refresh, refreshNominations, refreshJoinRequests]),
   );
   // Settlement offers waiting for me (bookings tab badge), polled while in the foreground.
   usePolling(refreshOffers, OFFERS_POLL_MS);
@@ -74,8 +78,9 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
-          // Green badge while a co-admin nomination waits for this user's answer.
-          tabBarBadge: badgeText(nominations.awaiting.length),
+          // Green badge: co-admin nominations waiting for this user's answer, plus
+          // residents waiting for this admin's approval.
+          tabBarBadge: badgeText(nominations.awaiting.length + joinRequests.total),
           tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.accentFg, fontSize: 11 },
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? "person" : "person-outline"} size={size} color={color} />

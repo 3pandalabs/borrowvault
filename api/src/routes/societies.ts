@@ -8,6 +8,7 @@ import { bookings, inviteCodes, listings, memberships, societies, towers, units,
 import { approvedSocietyIds, isPlatformAdmin, isSocietyAdmin } from "../lib/authz.js";
 import { conflict, invalid, notFound } from "../lib/errors.js";
 import { sweepDueNominations } from "../lib/adminApproval.js";
+import { notifyJoinRequest } from "../lib/notify.js";
 import { assertRoomForMember, isPilot, pilotFull } from "../lib/pilot.js";
 import { approvedMemberCount, memberCountSql } from "../lib/societyTier.js";
 import { UPI_VPA_RE } from "../lib/upi.js";
@@ -163,7 +164,17 @@ export async function societyRoutes(fastify: FastifyInstance) {
           .returning({ id: memberships.id });
         return m.id;
       });
-      return reply.code(201).send(await membershipById(id));
+      const view = await membershipById(id);
+      // Fire-and-forget: the society's admins hear about it (api/ROUTES.md "Join request notice").
+      void notifyJoinRequest({
+        membershipId: id,
+        societyId,
+        societyName: s.name,
+        requesterId: req.userId!,
+        towerName: t.name,
+        flatNo: b.flatNo.toUpperCase(),
+      });
+      return reply.code(201).send(view);
     },
   );
 

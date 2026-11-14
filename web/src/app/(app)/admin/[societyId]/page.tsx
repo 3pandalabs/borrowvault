@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import * as api from "@/lib/api";
 import { formatCountdown, formatINR, formatIST } from "@/lib/format";
 import { useAction, useAsync } from "@/lib/hooks";
+import { refreshJoinRequests } from "@/lib/joinRequests";
 import { useSession } from "@/lib/session";
 import type { AdminMembership, DepositMode, MembershipStatus, Society } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -211,6 +212,7 @@ function Members({ societyId }: { societyId: string }) {
             onChanged={() => {
               setSelected(null);
               list.reload();
+              void refreshJoinRequests(); // the header's pending-request badge
             }}
           />
         ) : list.data?.length ? (

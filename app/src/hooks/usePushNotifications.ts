@@ -3,8 +3,10 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { bookingPushId, chatConversationId } from "../lib/activeChat";
+import { isJoinRequestPush } from "../lib/joinRequests";
 import { isNominationPush } from "../lib/nominations";
 import { refreshOffers } from "../lib/offers";
+import { useJoinRequests } from "./useJoinRequests";
 import { useNominations } from "./useNominations";
 import { useUnread } from "./useUnread";
 
@@ -14,15 +16,16 @@ import { useUnread } from "./useUnread";
  * the chat and booking screens are reachable.
  * - A chat push arriving in the foreground refreshes the unread badge; a booking
  *   push (dispute response / accepted offer) refreshes the "offer waiting" badge;
- *   a co-admin nomination push refreshes the green Profile badge.
+ *   a co-admin nomination or join-request push refreshes the green Profile badge.
  * - Tapping one (warm, or the tap that cold-started the app) opens /chat/<id>,
- *   /booking/<id> or /admin-requests.
+ *   /booking/<id>, /admin-requests or /admin/join-requests.
  * Whether a foreground push is shown at all is decided in lib/push.ts.
  */
 export function usePushNotifications(ready: boolean) {
   const router = useRouter();
   const { refresh } = useUnread();
   const { refresh: refreshNominations } = useNominations();
+  const { refresh: refreshJoinRequests } = useJoinRequests();
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -31,9 +34,10 @@ export function usePushNotifications(ready: boolean) {
       if (chatConversationId(data)) void refresh();
       if (bookingPushId(data)) void refreshOffers();
       if (isNominationPush(data)) void refreshNominations();
+      if (isJoinRequestPush(data)) void refreshJoinRequests();
     });
     return () => sub.remove();
-  }, [refresh, refreshNominations]);
+  }, [refresh, refreshNominations, refreshJoinRequests]);
 
   useEffect(() => {
     if (!ready || Platform.OS === "web") return;
@@ -43,10 +47,13 @@ export function usePushNotifications(ready: boolean) {
       const chatId = chatConversationId(data);
       const bookingId = chatId ? null : bookingPushId(data);
       const nomination = !chatId && !bookingId && isNominationPush(data);
-      if (!chatId && !bookingId && !nomination) return;
+      const joinRequest = !chatId && !bookingId && !nomination && isJoinRequestPush(data);
+      if (!chatId && !bookingId && !nomination && !joinRequest) return;
       // Handled: don't re-open it on the next mount / sign-in.
       Notifications.clearLastNotificationResponse();
-      router.push(chatId ? `/chat/${chatId}` : bookingId ? `/booking/${bookingId}` : "/admin-requests");
+      router.push(
+        chatId ? `/chat/${chatId}` : bookingId ? `/booking/${bookingId}` : joinRequest ? "/admin/join-requests" : "/admin-requests",
+      );
     };
     // Cold start: the tap that launched the app. (getLastNotificationResponseAsync is
     // deprecated in SDK 57 in favour of this synchronous version.)

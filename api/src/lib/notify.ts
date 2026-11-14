@@ -1,7 +1,8 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { memberships, users } from "../db/schema.js";
 import { env } from "../env.js";
+import { joinRequestMail, joinRequestPushMessages, type JoinRequestNotice } from "./joinRequestNotice.js";
 import { sendMail, simpleMail } from "./mailer.js";
 import { nominationMail, nominationPushMessages } from "./nominationNotice.js";
 import { sendPush } from "./push.js";
@@ -111,5 +112,69 @@ async function notifyNomineeNow(
     if (tokens.length) await sendPush(nominationPushMessages(tokens, notice));
   } catch (err) {
     log(`notifyNominee push failed: ${String(err)}`);
+  }
+}
+
+/**
+ * A resident asked to join a society (api/ROUTES.md "Join request notice"):
+ * every approved admin of that society, except the requester, gets an email
+ * and a push on every registered device.
+ */
+export type JoinRequestInput = {
+  membershipId: string;
+  societyId: string;
+  societyName: string;
+  requesterId: string;
+  towerName: string | null;
+  flatNo: string | null;
+};
+
+export async function notifyJoinRequest(r: JoinRequestInput): Promise<void> {
+  void notifyJoinRequestNow(r);
+}
+
+/** Awaitable (tests); never throws. Routes call notifyJoinRequest. */
+export async function notifyJoinRequestNow(r: JoinRequestInput): Promise<void> {
+  try {
+    const [requester] = await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, r.requesterId));
+    const admins = await db
+      .select({ id: users.id, email: users.email })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(
+        and(
+          eq(memberships.societyId, r.societyId),
+          eq(memberships.role, "society_admin"),
+          eq(memberships.status, "approved"),
+          ne(memberships.userId, r.requesterId),
+          isNull(users.deletedAt),
+        ),
+      );
+    if (!admins.length) return;
+    const notice: JoinRequestNotice = {
+      membershipId: r.membershipId,
+      societyId: r.societyId,
+      societyName: r.societyName,
+      requesterName: requester?.displayName ?? "",
+      towerName: r.towerName,
+      flatNo: r.flatNo,
+      url: `${env.WEB_ORIGIN}/admin/${r.societyId}`,
+    };
+    try {
+      await sendMail(
+        admins.map((a) => joinRequestMail(a.email, notice)),
+        log,
+      );
+    } catch (err) {
+      log(`notifyJoinRequest mail failed: ${String(err)}`);
+    }
+    try {
+      const tokens = (await Promise.all(admins.map((a) => bookingPushTargets(a.id)))).flat();
+      if (tokens.length) await sendPush(joinRequestPushMessages(tokens, notice));
+    } catch (err) {
+      log(`notifyJoinRequest push failed: ${String(err)}`);
+    }
+  } catch (err) {
+    log(`notifyJoinRequest failed: ${String(err)}`);
   }
 }

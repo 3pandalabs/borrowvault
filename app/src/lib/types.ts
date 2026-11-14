@@ -35,6 +35,12 @@ export type Membership = {
 
 export type Me = { user: User; memberships: Membership[] };
 
+/** GET /admin/societies/:id/memberships row (society admins only). */
+export type AdminMembership = Membership & {
+  user: { id: string; displayName: string; email: string; phone: string } | null;
+  proofKey: string | null;
+};
+
 export type SocietyTier = "pilot" | "verified";
 
 /** `full` = a pilot society at its member cap (joining fails with 409 `society_full`). */

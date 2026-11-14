@@ -4,12 +4,12 @@ import { Image, ScrollView, Text, View } from "react-native";
 import { DateTimeField } from "../../src/components/DateTimeField";
 import { slotTitle } from "../../src/components/Evidence";
 import { confirmBlock, ReportModal, type ReportTarget } from "../../src/components/Safety";
-import { Button, Card, Chip, ErrorText, H1, H2, KV, Loading, P, Screen, TrustBadge } from "../../src/components/ui";
+import { Button, Card, Chip, ErrorText, FREE_GREEN, FreeBadge, H1, H2, KV, Loading, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader, useNow } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { bookingRequestError, chatError, createBooking, createConversation, getAvailability, getListing } from "../../src/lib/api";
 import { formatDateTime, formatPaise, fromIst, istParts } from "../../src/lib/format";
-import { categoryLabel, PRICING_LABEL, priceLine } from "../../src/lib/labels";
+import { categoryLabel, feeLabel, PRICING_LABEL, priceLine } from "../../src/lib/labels";
 import { colors } from "../../src/lib/theme";
 import type { BusyRange, Listing, PricingUnit } from "../../src/lib/types";
 
@@ -67,11 +67,17 @@ export default function ListingDetail() {
 
   const isOwner = l.owner.id === user?.id;
   const photoList = l.photoUrls ?? [];
-  const fee = unit ? estimateFee(l, unit, start, end) : null;
+  // Free listings: no pricing unit, the fee is always 0 (ROUTES.md "Free listings").
+  const fee = l.isFree ? (end > start ? 0 : null) : unit ? estimateFee(l, unit, start, end) : null;
   const clash = busy.some((r) => new Date(r.startsAt) < end && new Date(r.endsAt) > start);
   const lenMs = end.getTime() - start.getTime();
-  const tooLong = lenMs > 30 * 24 * HOUR ? "Bookings can be at most 30 days." : unit === "weekend" && lenMs > 72 * HOUR ? "A weekend booking can be at most 72 hours." : null;
-  const valid = !!unit && end > start && start.getTime() > now && !clash && !tooLong;
+  const tooLong =
+    lenMs > 30 * 24 * HOUR
+      ? "Bookings can be at most 30 days."
+      : !l.isFree && unit === "weekend" && lenMs > 72 * HOUR
+        ? "A weekend booking can be at most 72 hours."
+        : null;
+  const valid = (l.isFree || !!unit) && end > start && start.getTime() > now && !clash && !tooLong;
 
   async function askQuestion() {
     await ask.run(async () => {
@@ -90,7 +96,7 @@ export default function ListingDetail() {
     const ok = await action.run(async () => {
       let b;
       try {
-        b = await createBooking({ listingId: l!.id, startsAt: start.toISOString(), endsAt: end.toISOString(), pricing: unit! });
+        b = await createBooking({ listingId: l!.id, startsAt: start.toISOString(), endsAt: end.toISOString(), ...(l!.isFree ? {} : { pricing: unit! }) });
       } catch (err) {
         // 403 = unpaid dispute award or trust < 2.0: explain instead of "not allowed".
         throw new Error(bookingRequestError(err));
@@ -111,7 +117,16 @@ export default function ListingDetail() {
         </ScrollView>
       ) : null}
       <H1>{l.title}</H1>
-      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.accent }}>{priceLine(l)}</Text>
+      {l.isFree ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#ecfdf5", borderRadius: 12, padding: 10 }}>
+          <FreeBadge large />
+          <Text style={{ flex: 1, fontWeight: "700", color: FREE_GREEN }}>
+            {l.kind === "skill" ? "Offered for free by your neighbour" : "Lent for free by your neighbour"}
+          </Text>
+        </View>
+      ) : (
+        <Text style={{ fontSize: 16, fontWeight: "700", color: colors.accent }}>{priceLine(l)}</Text>
+      )}
       {l.status === "removed" ? (
         <Card style={{ borderColor: colors.danger }}>
           <H2>Removed by a society admin</H2>
@@ -157,7 +172,7 @@ export default function ListingDetail() {
       </Card>
       {l.description ? <P>{l.description}</P> : null}
       <Card>
-        {l.depositPaise > 0 ? <KV k="Deposit" v={formatPaise(l.depositPaise)} /> : null}
+        {l.depositPaise > 0 ? <KV k={l.isFree ? "Refundable deposit" : "Deposit"} v={formatPaise(l.depositPaise)} /> : null}
         {l.replacementValuePaise ? <KV k="Replacement value" v={formatPaise(l.replacementValuePaise)} /> : null}
         <KV k="Category" v={categoryLabel(l.category)} />
       </Card>
@@ -174,11 +189,13 @@ export default function ListingDetail() {
       {!isOwner && l.status === "active" ? (
         <Card>
           <H2>Request to book</H2>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {units.map((u) => (
-              <Chip key={u} label={`${PRICING_LABEL[u]} · ${formatPaise(l[`${u}Paise` as const])}`} selected={unit === u} onPress={() => setUnit(u)} />
-            ))}
-          </View>
+          {l.isFree ? null : (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {units.map((u) => (
+                <Chip key={u} label={`${PRICING_LABEL[u]} · ${formatPaise(l[`${u}Paise` as const])}`} selected={unit === u} onPress={() => setUnit(u)} />
+              ))}
+            </View>
+          )}
           <DateTimeField
             label="From"
             value={start}
@@ -203,9 +220,15 @@ export default function ListingDetail() {
           {clash ? <ErrorText>Those times overlap an existing booking.</ErrorText> : null}
           {end <= start ? <ErrorText>End must be after start.</ErrorText> : null}
           {tooLong ? <ErrorText>{tooLong}</ErrorText> : null}
-          {fee !== null ? <KV k="Estimated fee" v={formatPaise(fee)} /> : null}
-          {l.depositPaise > 0 ? <KV k="Deposit" v={formatPaise(l.depositPaise)} /> : null}
-          <P muted>You pay the lender directly by UPI after they accept. The fee shown is what the server will charge.</P>
+          {fee !== null ? <KV k={l.isFree ? "Fee" : "Estimated fee"} v={feeLabel(fee)} /> : null}
+          {l.depositPaise > 0 ? <KV k={l.isFree ? "Refundable deposit" : "Deposit"} v={formatPaise(l.depositPaise)} /> : null}
+          <P muted>
+            {l.isFree
+              ? l.depositPaise > 0
+                ? "No rental fee. If your society uses UPI deposits, you pay the refundable deposit after the lender accepts."
+                : "Nothing to pay. Once the lender accepts, just meet for the handover."
+              : "You pay the lender directly by UPI after they accept. The fee shown is what the server will charge."}
+          </P>
           <ErrorText>{action.error}</ErrorText>
           <Button title="Send request" onPress={request} busy={action.busy} disabled={!valid} />
         </Card>

@@ -350,6 +350,8 @@ export const listings = pgTable(
     category: text("category").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
+    // Lent for free: no prices (all null), every booking has fee 0 (ROUTES.md "Free listings").
+    isFree: boolean("is_free").notNull().default(false),
     hourlyPaise: paise("hourly_paise"),
     dailyPaise: paise("daily_paise"),
     weekendPaise: paise("weekend_paise"),
@@ -369,7 +371,10 @@ export const listings = pgTable(
   (t) => [
     index("listings_society_cat").on(t.societyId, t.category, t.status),
     index("listings_owner").on(t.ownerId),
-    check("listing_has_price", sql`coalesce(${t.hourlyPaise}, ${t.dailyPaise}, ${t.weekendPaise}) is not null`),
+    check(
+      "listing_has_price_v2",
+      sql`${t.isFree} or coalesce(${t.hourlyPaise}, ${t.dailyPaise}, ${t.weekendPaise}) is not null`,
+    ),
     check(
       "deposit_le_replacement",
       sql`${t.replacementValuePaise} is null or ${t.depositPaise} <= ${t.replacementValuePaise}`,

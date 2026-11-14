@@ -220,9 +220,11 @@ export type ListingInput = {
   category: string;
   title: string;
   description: string;
-  hourlyPaise?: number;
-  dailyPaise?: number;
-  weekendPaise?: number;
+  /** Lent for free: the server ignores prices and every booking costs 0. */
+  isFree?: boolean;
+  hourlyPaise?: number | null;
+  dailyPaise?: number | null;
+  weekendPaise?: number | null;
   depositPaise: number;
   replacementValuePaise?: number;
   checklistTemplate: ChecklistItem[];
@@ -238,6 +240,7 @@ export type ListingSummary = {
   kind: ListingKind;
   category: string;
   title: string;
+  isFree: boolean;
   hourlyPaise: number | null;
   dailyPaise: number | null;
   weekendPaise: number | null;

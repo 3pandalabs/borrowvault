@@ -11,6 +11,7 @@ import { getBooking, submitInspection } from "../../../src/lib/api";
 import { counterParty, fenceFlag, myInspection } from "../../../src/lib/booking";
 import { allAnswered, isAnswered } from "../../../src/lib/checklist";
 import { formatDateTime, formatPaise } from "../../../src/lib/format";
+import { feeLabel } from "../../../src/lib/labels";
 import { clearItems } from "../../../src/lib/uploadQueue";
 import { colors } from "../../../src/lib/theme";
 import type { ChecklistAnswer, Geo, InspectionPhase } from "../../../src/lib/types";
@@ -132,7 +133,7 @@ export default function InspectScreen() {
 
           <Card>
             {b.depositPaise > 0 ? <KV k={b.payment?.depositMode === "p2p" ? "Deposit paid" : "Deposit (declared)"} v={formatPaise(b.depositPaise)} /> : null}
-            <KV k="Fee" v={formatPaise(b.feePaise)} />
+            <KV k="Fee" v={feeLabel(b.feePaise)} />
             <KV k="Return by" v={formatDateTime(b.endsAt)} />
           </Card>
         </>

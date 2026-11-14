@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { OpenChatButton } from "@/components/chat";
 import { BlockButton, ReportListingDialog, ReportUserDialog } from "@/components/safety";
-import { EmptyState, ErrorText, Field, LoadError, Loading, Panel, PanelTitle, selectClass, TrustBadge } from "@/components/common";
+import { EmptyState, ErrorText, Field, FreeBadge, LoadError, Loading, Panel, PanelTitle, selectClass, TrustBadge } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,10 +58,19 @@ export default function ListingDetailPage() {
             ) : null}
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{l.title}</h1>
-          <p className="mt-1 text-lg">{priceLine(l)}</p>
-          {l.kind === "item" ? (
+          {l.isFree ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <FreeBadge large />
+              <span className="text-sm font-medium text-emerald-800">
+                {l.kind === "skill" ? "Offered for free by your neighbour" : "Lent for free by your neighbour"}
+              </span>
+            </div>
+          ) : (
+            <p className="mt-1 text-lg">{priceLine(l)}</p>
+          )}
+          {l.kind === "item" && (!l.isFree || l.depositPaise > 0 || l.replacementValuePaise) ? (
             <p className="text-sm text-fg-muted">
-              Deposit {formatINR(l.depositPaise)}
+              {l.isFree ? "Refundable deposit" : "Deposit"} {formatINR(l.depositPaise)}
               {l.replacementValuePaise ? ` · Replacement value ${formatINR(l.replacementValuePaise)}` : ""}
             </p>
           ) : null}
@@ -233,8 +242,11 @@ function RequestForm({ listing: l }: { listing: Listing }) {
   const valid = !Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs > startMs;
   const hours = valid ? (endMs - startMs) / 3_600_000 : 0;
   const unitPrice = units.find(([u]) => u === pricing)?.[1] ?? 0;
-  const estimate =
-    !valid || !unitPrice
+  const estimate = l.isFree
+    ? valid
+      ? 0
+      : null
+    : !valid || !unitPrice
       ? null
       : pricing === "hourly"
         ? Math.ceil(hours) * unitPrice
@@ -246,11 +258,11 @@ function RequestForm({ listing: l }: { listing: Listing }) {
     e.preventDefault();
     if (!valid) return setError("The end has to be after the start.");
     if (hours > 30 * 24) return setError("Bookings can be at most 30 days.");
-    if (pricing === "weekend" && hours > 72) return setError("Weekend pricing covers up to 72 hours. Pick daily for longer.");
+    if (!l.isFree && pricing === "weekend" && hours > 72) return setError("Weekend pricing covers up to 72 hours. Pick daily for longer.");
     setBusy(true);
     setError(null);
     try {
-      const b = await createBooking({ listingId: l.id, startsAt: istLocalToIso(start), endsAt: istLocalToIso(end), pricing });
+      const b = await createBooking({ listingId: l.id, startsAt: istLocalToIso(start), endsAt: istLocalToIso(end), ...(l.isFree ? {} : { pricing }) });
       router.push(`/bookings/${b.id}`);
     } catch (err) {
       setError(
@@ -267,15 +279,17 @@ function RequestForm({ listing: l }: { listing: Listing }) {
     <Panel>
       <PanelTitle>Request to {l.kind === "skill" ? "book" : "borrow"}</PanelTitle>
       <form onSubmit={submit} className="space-y-3">
-        <Field label="Pricing" htmlFor="pricing">
-          <select id="pricing" className={selectClass} value={pricing} onChange={(e) => setPricing(e.target.value as PricingUnit)}>
-            {units.map(([u, p, label]) => (
-              <option key={u} value={u}>
-                {label}: {formatINR(p)}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {l.isFree ? null : (
+          <Field label="Pricing" htmlFor="pricing">
+            <select id="pricing" className={selectClass} value={pricing} onChange={(e) => setPricing(e.target.value as PricingUnit)}>
+              {units.map(([u, p, label]) => (
+                <option key={u} value={u}>
+                  {label}: {formatINR(p)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="From (IST)" htmlFor="start">
           <Input id="start" type="datetime-local" required value={start} onChange={(e) => setStart(e.target.value)} />
         </Field>
@@ -285,8 +299,8 @@ function RequestForm({ listing: l }: { listing: Listing }) {
         {estimate !== null ? (
           <div className="rounded-xl bg-zinc-50 p-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-fg-muted">Estimated fee</span>
-              <span className="font-medium">{formatINR(estimate)}</span>
+              <span className="text-fg-muted">{l.isFree ? "Fee" : "Estimated fee"}</span>
+              {l.isFree ? <FreeBadge /> : <span className="font-medium">{formatINR(estimate)}</span>}
             </div>
             {l.depositPaise ? (
               <div className="flex justify-between">
@@ -294,7 +308,13 @@ function RequestForm({ listing: l }: { listing: Listing }) {
                 <span>{formatINR(l.depositPaise)}</span>
               </div>
             ) : null}
-            <p className="mt-1 text-xs text-fg-muted">The final amount is set when the lender accepts. You pay over UPI after that.</p>
+            <p className="mt-1 text-xs text-fg-muted">
+              {l.isFree
+                ? l.depositPaise
+                  ? "No rental fee. If your society uses UPI deposits, you pay the refundable deposit after the lender accepts."
+                  : "Nothing to pay. Once the lender accepts, just meet for the handover."
+                : "The final amount is set when the lender accepts. You pay over UPI after that."}
+            </p>
           </div>
         ) : null}
         <ErrorText>{error}</ErrorText>

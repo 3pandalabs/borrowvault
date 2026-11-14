@@ -80,7 +80,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           listingId: uuid,
           startsAt: z.string().datetime({ offset: true }),
           endsAt: z.string().datetime({ offset: true }),
-          pricing: z.enum(["hourly", "daily", "weekend"]),
+          pricing: z.enum(["hourly", "daily", "weekend"]).optional(), // optional for free listings
         }),
       },
     },

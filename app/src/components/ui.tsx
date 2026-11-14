@@ -228,6 +228,29 @@ export function KV({ k, v, warn }: { k: string; v: ReactNode; warn?: boolean }) 
   );
 }
 
+export const FREE_GREEN = "#059669";
+
+/** Prominent green "FREE" tag shown instead of a price on free listings. */
+export function FreeBadge({ large, style }: { large?: boolean; style?: ViewStyle }) {
+  return (
+    <View
+      style={[
+        {
+          alignSelf: "flex-start",
+          backgroundColor: FREE_GREEN,
+          borderRadius: 999,
+          paddingHorizontal: large ? 12 : 8,
+          paddingVertical: large ? 4 : 2,
+        },
+        style,
+      ]}
+      accessibilityLabel="Free"
+    >
+      <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: large ? 14 : 11, letterSpacing: 0.6 }}>FREE</Text>
+    </View>
+  );
+}
+
 export function TrustBadge({ trust }: { trust: Trust | undefined | null }) {
   if (!trust) return null;
   const low = trust.score < 3 || trust.completed < 1;

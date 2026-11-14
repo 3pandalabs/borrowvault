@@ -36,6 +36,7 @@ const listingFields = {
   category: z.string().max(40),
   title: z.string().trim().min(3).max(120),
   description: z.string().max(4000).default(""),
+  isFree: z.boolean().default(false),
   hourlyPaise: paise.nullable().optional(),
   dailyPaise: paise.nullable().optional(),
   weekendPaise: paise.nullable().optional(),
@@ -61,7 +62,12 @@ function normalise(l: ListingInput, ownerId: string): ListingInput {
   const preset = CATEGORY_BY_KEY.get(l.category);
   if (!preset) throw invalid(`unknown category; see GET /categories`);
   if (preset.kind !== l.kind) throw invalid(`category ${l.category} is for ${preset.kind} listings`);
-  if (l.hourlyPaise == null && l.dailyPaise == null && l.weekendPaise == null) throw invalid("at least one price is required");
+  if (l.isFree) {
+    // Free: any prices sent are ignored (a PATCH to free clears the stored ones).
+    l = { ...l, hourlyPaise: null, dailyPaise: null, weekendPaise: null };
+  } else if (l.hourlyPaise == null && l.dailyPaise == null && l.weekendPaise == null) {
+    throw invalid("at least one price is required");
+  }
   for (const k of l.photoKeys) {
     const p = parseKey(k);
     if (!p || p.kind !== "listing" || p.userId !== ownerId) throw invalid("photoKeys must be your own listing photo uploads");
@@ -107,6 +113,7 @@ async function summary(r: ListingRow, owner: ReturnType<Awaited<ReturnType<typeo
     kind: r.kind,
     category: r.category,
     title: r.title,
+    isFree: r.isFree,
     hourlyPaise: r.hourlyPaise,
     dailyPaise: r.dailyPaise,
     weekendPaise: r.weekendPaise,
@@ -209,6 +216,7 @@ export async function listingRoutes(fastify: FastifyInstance) {
           kind: z.enum(["item", "skill"]).optional(),
           category: z.string().max(40).optional(),
           q: z.string().max(100).optional(),
+          free: z.enum(["1", "0", "true", "false"]).optional(), // "1"/"true" = only free listings
           ownerId: z.literal("me").optional(), // my listings across societies, any status
         }),
       },
@@ -244,6 +252,7 @@ export async function listingRoutes(fastify: FastifyInstance) {
             where,
             q.kind ? eq(listings.kind, q.kind) : undefined,
             q.category ? eq(listings.category, q.category) : undefined,
+            q.free === "1" || q.free === "true" ? eq(listings.isFree, true) : undefined,
             term ? or(ilike(listings.title, `%${term}%`), ilike(listings.description, `%${term}%`)) : undefined,
           ),
         )
@@ -262,9 +271,12 @@ export async function listingRoutes(fastify: FastifyInstance) {
     const me = req.userId!;
     const { societyId, ...input } = req.body;
     await requireApprovedMember(me, societyId);
-    const [u] = await db.select({ upiVpa: users.upiVpa }).from(users).where(eq(users.id, me));
-    if (!u?.upiVpa) throw invalid("add your UPI ID to your profile before lending");
     const l = normalise(input, me);
+    // A free listing with no deposit never receives money, so it needs no UPI ID.
+    if (!(l.isFree && l.depositPaise === 0)) {
+      const [u] = await db.select({ upiVpa: users.upiVpa }).from(users).where(eq(users.id, me));
+      if (!u?.upiVpa) throw invalid("add your UPI ID to your profile before lending");
+    }
     assertPilotListingValues(await societyTierOf(societyId), l);
     const [row] = await db
       .insert(listings)
@@ -296,6 +308,7 @@ export async function listingRoutes(fastify: FastifyInstance) {
         category: current.category,
         title: current.title,
         description: current.description,
+        isFree: current.isFree,
         hourlyPaise: current.hourlyPaise,
         dailyPaise: current.dailyPaise,
         weekendPaise: current.weekendPaise,

@@ -411,6 +411,8 @@ export const listListings = (p: {
   kind?: ListingKind | "";
   category?: string;
   q?: string;
+  /** "1" = only free listings. */
+  free?: "1";
   ownerId?: "me";
 }) => call<ListingSummary[]>(`/listings${qs(p)}`);
 export const getListing = (id: string) => call<Listing>(`/listings/${enc(id)}`);
@@ -429,7 +431,7 @@ const bk = (id: string, tail = "") => `/bookings/${enc(id)}${tail}`;
 const action = (id: string, tail: string, body?: unknown) =>
   call<BookingDetail>(bk(id, tail), { method: "POST", body });
 
-export const createBooking = (body: { listingId: string; startsAt: string; endsAt: string; pricing: PricingUnit }) =>
+export const createBooking = (body: { listingId: string; startsAt: string; endsAt: string; pricing?: PricingUnit }) =>
   call<Booking>("/bookings", { method: "POST", body });
 export const listBookings = (p: { role?: "lender" | "borrower"; state?: BookingState | "" } = {}) =>
   call<Booking[]>(`/bookings${qs(p)}`);

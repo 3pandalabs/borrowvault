@@ -1,12 +1,18 @@
 import { formatPaise } from "./format";
 import type { Booking, DisputeCategory, NextAction, PricingUnit } from "./types";
 
-export function priceLine(l: { hourlyPaise: number | null; dailyPaise: number | null; weekendPaise: number | null }) {
+export function priceLine(l: { isFree?: boolean; hourlyPaise: number | null; dailyPaise: number | null; weekendPaise: number | null }) {
+  if (l.isFree) return "Free";
   const parts: string[] = [];
   if (l.hourlyPaise) parts.push(`${formatPaise(l.hourlyPaise)}/hr`);
   if (l.dailyPaise) parts.push(`${formatPaise(l.dailyPaise)}/day`);
   if (l.weekendPaise) parts.push(`${formatPaise(l.weekendPaise)}/weekend`);
   return parts.join(" · ") || "Price on request";
+}
+
+/** A booking fee for display: "Free" when nothing is charged (free listings), else ₹. */
+export function feeLabel(feePaise: number | null | undefined): string {
+  return feePaise === 0 ? "Free" : formatPaise(feePaise);
 }
 
 export const PRICING_LABEL: Record<PricingUnit, string> = {

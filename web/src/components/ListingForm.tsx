@@ -9,7 +9,7 @@ import { useAsync } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
 import type { ChecklistItem, ChecklistType, Listing, ListingInput, ListingKind, OwnerListingStatus } from "@/lib/types";
 import { PILOT_VALUE_CAP_PAISE } from "./adminRequests";
-import { ErrorText, Field, Panel, PanelTitle, selectClass } from "./common";
+import { ErrorText, Field, FreeBadge, Panel, PanelTitle, selectClass } from "./common";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 
@@ -50,6 +50,7 @@ export function ListingForm({
   const [category, setCategory] = useState(initial?.category ?? "");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [isFree, setIsFree] = useState(initial?.isFree ?? false);
   const [hourly, setHourly] = useState(paiseToRupeesInput(initial?.hourlyPaise));
   const [daily, setDaily] = useState(paiseToRupeesInput(initial?.dailyPaise));
   const [weekend, setWeekend] = useState(paiseToRupeesInput(initial?.weekendPaise));
@@ -121,7 +122,10 @@ export function ListingForm({
     if (pilot && kind === "item" && (depositPaise > PILOT_VALUE_CAP_PAISE || (replacementValuePaise ?? 0) > PILOT_VALUE_CAP_PAISE)) {
       return setError("Your society is a pilot society. The deposit and replacement value can be at most ₹5,000 each.");
     }
-    if (!hourlyPaise && !dailyPaise && !weekendPaise) return setError("Set at least one price: hourly, daily or weekend.");
+    if (!isFree && !hourlyPaise && !dailyPaise && !weekendPaise)
+      return setError("Set at least one price: hourly, daily or weekend. Or turn on \"Lend for free\".");
+    if (!user.upiVpa && (!isFree || depositPaise > 0))
+      return setError("Add your UPI ID in your profile first: borrowers pay the fee or deposit straight to it.");
     if (!category) return setError("Pick a category.");
     const cleanChecklist =
       kind === "skill"
@@ -147,9 +151,10 @@ export function ListingForm({
         category,
         title: title.trim(),
         description: description.trim(),
-        ...(hourlyPaise ? { hourlyPaise } : {}),
-        ...(dailyPaise ? { dailyPaise } : {}),
-        ...(weekendPaise ? { weekendPaise } : {}),
+        isFree,
+        ...(!isFree && hourlyPaise ? { hourlyPaise } : {}),
+        ...(!isFree && dailyPaise ? { dailyPaise } : {}),
+        ...(!isFree && weekendPaise ? { weekendPaise } : {}),
         depositPaise,
         ...(replacementValuePaise ? { replacementValuePaise } : {}),
         checklistTemplate: cleanChecklist,
@@ -164,18 +169,8 @@ export function ListingForm({
     }
   }
 
-  if (!user.upiVpa) {
-    return (
-      <Panel className="text-center">
-        <Wallet className="mx-auto size-8 text-accent" />
-        <p className="mt-3 font-medium">Add your UPI ID first</p>
-        <p className="mt-1 text-sm text-fg-muted">Borrowers pay you directly over UPI, so a UPI ID is required before you can lend.</p>
-        <Link href="/profile" className="mt-4 inline-block">
-          <Button>Add UPI ID</Button>
-        </Link>
-      </Panel>
-    );
-  }
+  // A UPI ID is needed only when money can reach the lender: a fee, or a deposit.
+  const needsUpi = !user.upiVpa && (!isFree || (kind === "item" && (rupeesToPaise(deposit) ?? 0) > 0));
 
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -233,18 +228,49 @@ export function ListingForm({
 
       <Panel className="space-y-4">
         <PanelTitle>Price</PanelTitle>
-        <p className="-mt-2 text-sm text-fg-muted">In rupees. Set at least one. Paid to your UPI ID: {user.upiVpa}</p>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Per hour (₹)" htmlFor="hr">
-            <Input id="hr" inputMode="decimal" value={hourly} onChange={(e) => setHourly(e.target.value)} />
-          </Field>
-          <Field label="Per day (₹)" htmlFor="day">
-            <Input id="day" inputMode="decimal" value={daily} onChange={(e) => setDaily(e.target.value)} />
-          </Field>
-          <Field label="Per weekend (₹)" htmlFor="wk">
-            <Input id="wk" inputMode="decimal" value={weekend} onChange={(e) => setWeekend(e.target.value)} />
-          </Field>
-        </div>
+        <label
+          className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 text-sm ${isFree ? "border-emerald-500 bg-emerald-50" : "border-line"}`}
+        >
+          <input type="checkbox" className="mt-0.5 size-4 accent-emerald-600" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
+          <span>
+            <span className="flex items-center gap-2 font-medium">
+              Lend for free {isFree ? <FreeBadge /> : null}
+            </span>
+            <span className="text-fg-muted">
+              No rental fee and no payment step. Your listing gets a green FREE badge.
+              {kind === "item" ? " You can still ask for a refundable deposit." : ""}
+            </span>
+          </span>
+        </label>
+        {isFree ? null : (
+          <>
+            <p className="text-sm text-fg-muted">
+              In rupees. Set at least one.{user.upiVpa ? ` Paid to your UPI ID: ${user.upiVpa}` : ""}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Per hour (₹)" htmlFor="hr">
+                <Input id="hr" inputMode="decimal" value={hourly} onChange={(e) => setHourly(e.target.value)} />
+              </Field>
+              <Field label="Per day (₹)" htmlFor="day">
+                <Input id="day" inputMode="decimal" value={daily} onChange={(e) => setDaily(e.target.value)} />
+              </Field>
+              <Field label="Per weekend (₹)" htmlFor="wk">
+                <Input id="wk" inputMode="decimal" value={weekend} onChange={(e) => setWeekend(e.target.value)} />
+              </Field>
+            </div>
+          </>
+        )}
+        {needsUpi ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <Wallet className="size-5 shrink-0" />
+            <span className="flex-1">Borrowers pay fees and deposits straight to your UPI ID, so add one before you list this.</span>
+            <Link href="/profile">
+              <Button type="button" size="sm" variant="outline">
+                Add UPI ID
+              </Button>
+            </Link>
+          </div>
+        ) : null}
         {kind === "item" ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field

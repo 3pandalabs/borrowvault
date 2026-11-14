@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
-import { Button, Chip, ChipRow, Empty, ErrorText, TrustBadge } from "../../src/components/ui";
+import { Button, Chip, ChipRow, Empty, ErrorText, FREE_GREEN, FreeBadge, TrustBadge } from "../../src/components/ui";
 import { useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { getCategories, listListings } from "../../src/lib/api";
@@ -19,6 +19,7 @@ export default function Browse() {
   const societyId = approved.some((m) => m.societyId === pickedSociety) ? pickedSociety : (approved[0]?.societyId ?? "");
   const [kind, setKind] = useState<ListingKind>("item");
   const [category, setCategory] = useState<string | null>(null);
+  const [onlyFree, setOnlyFree] = useState(false);
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [categories, setCategories] = useState<CategoryPreset[]>([]);
@@ -32,8 +33,9 @@ export default function Browse() {
   }, [q]);
 
   const { data, error, loading, reload } = useLoader(
-    () => listListings({ societyId, kind, category: category ?? undefined, q: debouncedQ || undefined }),
-    [societyId, kind, category, debouncedQ],
+    () =>
+      listListings({ societyId, kind, category: category ?? undefined, q: debouncedQ || undefined, free: onlyFree ? "1" : undefined }),
+    [societyId, kind, category, debouncedQ, onlyFree],
   );
 
   const cats = categories.filter((c) => c.kind === kind);
@@ -79,6 +81,7 @@ export default function Browse() {
           />
         </View>
         <ChipRow>
+          <Chip label={onlyFree ? "✓ Free only" : "Free"} tone={onlyFree ? undefined : "good"} selected={onlyFree} onPress={() => setOnlyFree((f) => !f)} />
           <Chip label="All" selected={!category} onPress={() => setCategory(null)} />
           {cats.map((c) => (
             <Chip key={c.key} label={c.label} selected={category === c.key} onPress={() => setCategory(c.key)} />
@@ -94,7 +97,7 @@ export default function Browse() {
         ListEmptyComponent={
           loading ? null : (
             <Empty
-              title={`No ${kind === "item" ? "items" : "skills"} yet`}
+              title={`No ${onlyFree ? "free " : ""}${kind === "item" ? "items" : "skills"} yet`}
               body="Be the first in your society to list something."
             />
           )
@@ -114,19 +117,26 @@ export default function Browse() {
 
 function ListingCard({ l, mine, onPress }: { l: ListingSummary; mine: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={s.card}>
-      {l.coverUrl ? (
-        <Image source={{ uri: l.coverUrl }} style={s.cover} />
-      ) : (
-        <View style={[s.cover, { alignItems: "center", justifyContent: "center" }]}>
-          <Ionicons name={l.kind === "item" ? "cube-outline" : "construct-outline"} size={28} color={colors.fgMuted} />
-        </View>
-      )}
+    <Pressable onPress={onPress} style={[s.card, l.isFree && s.cardFree]}>
+      <View>
+        {l.coverUrl ? (
+          <Image source={{ uri: l.coverUrl }} style={s.cover} />
+        ) : (
+          <View style={[s.cover, { alignItems: "center", justifyContent: "center" }]}>
+            <Ionicons name={l.kind === "item" ? "cube-outline" : "construct-outline"} size={28} color={colors.fgMuted} />
+          </View>
+        )}
+        {l.isFree ? <FreeBadge style={{ position: "absolute", top: 4, left: 4 }} /> : null}
+      </View>
       <View style={{ flex: 1, gap: 4 }}>
         <Text style={s.title} numberOfLines={2}>
           {l.title}
         </Text>
-        <Text style={s.price}>{priceLine(l)}</Text>
+        {l.isFree ? (
+          <Text style={[s.price, { color: FREE_GREEN }]}>{l.kind === "skill" ? "Offered for free" : "Free to borrow"}</Text>
+        ) : (
+          <Text style={s.price}>{priceLine(l)}</Text>
+        )}
         {l.depositPaise > 0 ? <Text style={s.meta}>Deposit {formatPaise(l.depositPaise)}</Text> : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           {l.owner ? (
@@ -151,6 +161,7 @@ const s = StyleSheet.create({
   segText: { fontWeight: "700", color: colors.fg },
   search: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12 },
   card: { flexDirection: "row", gap: 12, backgroundColor: colors.card, padding: 12, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  cardFree: { borderWidth: 2, borderColor: FREE_GREEN },
   cover: { width: 84, height: 84, borderRadius: radius.md, backgroundColor: colors.bgSubtle },
   title: { fontSize: 16, fontWeight: "700", color: colors.fg },
   price: { fontSize: 14, fontWeight: "700", color: colors.accent },

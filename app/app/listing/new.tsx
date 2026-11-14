@@ -3,8 +3,8 @@ import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Button, Card, Chip, ChipRow, ErrorText, Field, H2, Label, P, Screen } from "../../src/components/ui";
+import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Button, Card, Chip, ChipRow, ErrorText, Field, FREE_GREEN, FreeBadge, H2, Label, P, Screen } from "../../src/components/ui";
 import { useAction } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { createListing, getCategories } from "../../src/lib/api";
@@ -34,6 +34,7 @@ export default function NewListing() {
   const [category, setCategory] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [isFree, setIsFree] = useState(false);
   const [hourly, setHourly] = useState("");
   const [daily, setDaily] = useState("");
   const [weekend, setWeekend] = useState("");
@@ -73,25 +74,30 @@ export default function NewListing() {
   }
 
   const isItem = kind === "item";
-  const prices = {
-    hourlyPaise: hourly ? rupeesToPaise(hourly) : undefined,
-    dailyPaise: daily ? rupeesToPaise(daily) : undefined,
-    weekendPaise: isItem && weekend ? rupeesToPaise(weekend) : undefined,
-  };
+  // Free listings send no prices at all (ROUTES.md "Free listings").
+  const prices = isFree
+    ? { hourlyPaise: undefined, dailyPaise: undefined, weekendPaise: undefined }
+    : {
+        hourlyPaise: hourly ? rupeesToPaise(hourly) : undefined,
+        dailyPaise: daily ? rupeesToPaise(daily) : undefined,
+        weekendPaise: isItem && weekend ? rupeesToPaise(weekend) : undefined,
+      };
   const depositPaise = isItem ? (deposit ? rupeesToPaise(deposit) : 0) : 0;
   const replacementPaise = isItem && replacement ? rupeesToPaise(replacement) : undefined;
   const errors = {
     title: title.trim().length < 3 ? "Give it a short title" : null,
     category: !category ? "Pick a category" : null,
-    price:
-      Object.values(prices).some((v) => v === null) ? "Prices must be in rupees, e.g. 350"
-      : !Object.values(prices).some((v) => v && v > 0) ? "Set at least one price" : null,
+    price: isFree
+      ? null
+      : Object.values(prices).some((v) => v === null) ? "Prices must be in rupees, e.g. 350"
+      : !Object.values(prices).some((v) => v && v > 0) ? "Set at least one price, or turn on Lend for free" : null,
     deposit: depositPaise === null || replacementPaise === null ? "Enter amounts in rupees" : null,
     slots: isItem && slots.length === 0 ? "Items need at least one required photo" : null,
     checklist: checklist.some((c) => !c.label.trim() || (c.type === "choice" && (c.options ?? []).filter(Boolean).length < 2))
       ? "Each checklist item needs a label; choices need 2+ options"
       : null,
-    vpa: !user?.upiVpa ? "Add your UPI ID in Profile before lending" : null,
+    // A free listing with no deposit never receives money, so it needs no UPI ID.
+    vpa: !user?.upiVpa && !(isFree && !depositPaise) ? "Add your UPI ID in Profile before lending" : null,
     photos: photos.some((p) => p.size && p.size > LISTING_MAX) ? "Each photo must be 8 MB or smaller" : null,
   };
   const valid = !Object.values(errors).some(Boolean) && !!societyId;
@@ -108,6 +114,7 @@ export default function NewListing() {
         category: category!,
         title: title.trim(),
         description: description.trim(),
+        isFree,
         ...(prices.hourlyPaise ? { hourlyPaise: prices.hourlyPaise } : {}),
         ...(prices.dailyPaise ? { dailyPaise: prices.dailyPaise } : {}),
         ...(prices.weekendPaise ? { weekendPaise: prices.weekendPaise } : {}),
@@ -131,7 +138,7 @@ export default function NewListing() {
       <Stack.Screen options={{ title: "New listing" }} />
       {errors.vpa ? (
         <Card style={{ backgroundColor: colors.warnSoft }}>
-          <P>Borrowers pay you directly by UPI, so add your UPI ID first.</P>
+          <P>Borrowers pay you directly by UPI, so add your UPI ID first (not needed to lend for free without a deposit).</P>
           <Button title="Go to Profile" variant="secondary" onPress={() => router.push("/(tabs)/profile")} />
         </Card>
       ) : null}
@@ -163,15 +170,34 @@ export default function NewListing() {
 
       <Card>
         <H2>Price (₹)</H2>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <View style={{ flex: 1 }}><Field label="Per hour" value={hourly} onChangeText={setHourly} keyboardType="decimal-pad" /></View>
-          <View style={{ flex: 1 }}><Field label="Per day" value={daily} onChangeText={setDaily} keyboardType="decimal-pad" /></View>
-          {isItem ? <View style={{ flex: 1 }}><Field label="Weekend" value={weekend} onChangeText={setWeekend} keyboardType="decimal-pad" /></View> : null}
-        </View>
+        <Pressable
+          onPress={() => setIsFree((f) => !f)}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: isFree }}
+          style={[st.freeRow, isFree && { borderColor: FREE_GREEN, backgroundColor: "#ecfdf5" }]}
+        >
+          <View style={{ flex: 1, gap: 2 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ fontWeight: "700", color: colors.fg }}>Lend for free</Text>
+              {isFree ? <FreeBadge /> : null}
+            </View>
+            <Text style={{ fontSize: 12, color: colors.fgMuted }}>
+              No rental fee and no payment step. Your listing gets a green FREE badge.{isItem ? " You can still ask for a refundable deposit." : ""}
+            </Text>
+          </View>
+          <Switch value={isFree} onValueChange={setIsFree} trackColor={{ true: FREE_GREEN }} />
+        </Pressable>
+        {isFree ? null : (
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}><Field label="Per hour" value={hourly} onChangeText={setHourly} keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1 }}><Field label="Per day" value={daily} onChangeText={setDaily} keyboardType="decimal-pad" /></View>
+            {isItem ? <View style={{ flex: 1 }}><Field label="Weekend" value={weekend} onChangeText={setWeekend} keyboardType="decimal-pad" /></View> : null}
+          </View>
+        )}
         {touched && errors.price ? <ErrorText>{errors.price}</ErrorText> : null}
         {isItem ? (
           <>
-            <Field label="Deposit (₹)" value={deposit} onChangeText={setDeposit} keyboardType="decimal-pad" hint="The most you can claim if something goes wrong." />
+            <Field label={isFree ? "Refundable deposit (₹, 0 for none)" : "Deposit (₹)"} value={deposit} onChangeText={setDeposit} keyboardType="decimal-pad" hint="The most you can claim if something goes wrong." />
             <Field label="Replacement value (₹, optional)" value={replacement} onChangeText={setReplacement} keyboardType="decimal-pad" />
             {touched && errors.deposit ? <ErrorText>{errors.deposit}</ErrorText> : null}
           </>
@@ -269,6 +295,7 @@ export default function NewListing() {
 const st = StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: colors.fg, backgroundColor: colors.card },
   itemBox: { gap: 6, paddingVertical: 8, borderTopWidth: 1, borderColor: colors.border },
+  freeRow: { flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12 },
   thumb: { width: 88, height: 88, borderRadius: radius.md, backgroundColor: colors.bgSubtle },
   addThumb: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderStyle: "dashed", borderColor: colors.border },
 });

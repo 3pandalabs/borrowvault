@@ -112,6 +112,11 @@ export function errorMessage(e: unknown): string {
 const MESSAGE_COPY: Record<string, string> = {
   // Signup with a registered email (generic on purpose: no account-enumeration oracle).
   registration_failed: "Couldn't create an account with this email. If you've signed up before, sign in instead.",
+  // Email verification (ROUTES.md "Email verification").
+  email_unverified:
+    "Confirm your email first. Open the link we emailed you (check spam too), or resend it from the banner at the top.",
+  email_already_verified: "Your email is already confirmed.",
+  invalid_or_expired_token: "That link has expired or isn't valid any more.",
   request_pending:
     "There is already an open admin request or nomination for this person and society. Wait for it, or withdraw it from My requests.",
   already_admin: "That person is already an admin of this society.",
@@ -283,6 +288,12 @@ export const requestPasswordReset = (email: string) =>
 /** → 204; 400 `invalid_or_expired_token`. Kills all sessions. */
 export const confirmPasswordReset = (token: string, password: string) =>
   call<void>("/auth/password-reset/confirm", { method: "POST", body: { token, password }, auth: false });
+
+/** → `{emailVerified: true}` (also for a second click); 400 `invalid_or_expired_token`. */
+export const verifyEmail = (token: string) =>
+  call<{ emailVerified: true }>("/auth/verify-email", { method: "POST", body: { token }, auth: false });
+/** → 204; 409 `email_already_verified`; 429 after 3 / hour. */
+export const resendVerificationEmail = () => call<void>("/auth/verify-email/resend", { method: "POST" });
 
 export const getMe = () => call<Me>("/me");
 export const updateMe = (b: { displayName?: string; phone?: string; upiVpa?: string }) =>

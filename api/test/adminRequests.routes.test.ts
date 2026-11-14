@@ -17,7 +17,16 @@ vi.hoisted(() => {
   });
 });
 
-const state = vi.hoisted(() => ({ platform: false, selectRows: [] as unknown[] }));
+const state = vi.hoisted(() => ({ platform: false, selectRows: [] as unknown[], emailVerified: true }));
+
+vi.mock("../src/lib/emailVerification.js", async () => {
+  const { forbidden } = await import("../src/lib/errors.js");
+  return {
+    assertEmailVerified: vi.fn(async () => {
+      if (!state.emailVerified) throw forbidden("email_unverified");
+    }),
+  };
+});
 
 vi.mock("../src/lib/authz.js", () => ({
   isPlatformAdmin: vi.fn(async () => state.platform),
@@ -83,6 +92,7 @@ afterAll(async () => {
 beforeEach(() => {
   state.platform = false;
   state.selectRows = [];
+  state.emailVerified = true;
 });
 
 describe("platform-only routes", () => {
@@ -113,6 +123,17 @@ describe("platform-only routes", () => {
 describe("POST /admin-requests validation", () => {
   const join = (docs: Record<string, string>) => ({ kind: "join_admin", societyId: SOCIETY, committeeRole: "Treasurer", docs });
 
+  it("403 email_unverified before anything else for an unverified caller", async () => {
+    state.emailVerified = false;
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin-requests",
+      headers: auth,
+      payload: join({ idProofKey: adminDocKey(ME, "image/png") }),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: "email_unverified", code: "FORBIDDEN" });
+  });
   it("400 when a document isn't the caller's own upload", async () => {
     const res = await app.inject({
       method: "POST",

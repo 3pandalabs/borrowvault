@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Button, Card, Empty, ErrorText, Field, Loading, P, Screen } from "../../src/components/ui";
+import { VerifyEmailBanner } from "../../src/components/VerifyEmailBanner";
 import { useAuth } from "../../src/hooks/useAuth";
 import { friendlyError, searchSocieties } from "../../src/lib/api";
 import { openWeb } from "../../src/lib/openWeb";
@@ -45,6 +46,7 @@ export default function SocietySearch() {
 
   return (
     <Screen>
+      <VerifyEmailBanner />
       <P muted>
         BorrowVault works inside one gated society at a time. Find yours, then your society admin verifies your flat.
       </P>

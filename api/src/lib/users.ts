@@ -9,6 +9,7 @@ export function userView(u: UserRow) {
   return {
     id: u.id,
     email: u.email,
+    emailVerified: u.emailVerifiedAt !== null,
     displayName: u.displayName,
     phone: u.phone,
     upiVpa: u.upiVpa,

@@ -6,6 +6,7 @@ import { Button, ErrorText, Field, H1, P, Screen } from "../../src/components/ui
 import { useAuth } from "../../src/hooks/useAuth";
 import { openWeb } from "../../src/lib/openWeb";
 import { colors } from "../../src/lib/theme";
+import { suggestEmail } from "../../src/lib/emailTypo";
 import { isValidEmail, normalisePhone } from "../../src/lib/validation";
 import { privacyUrl, termsUrl } from "../../src/lib/web";
 
@@ -27,6 +28,8 @@ export default function SignUp() {
     password: password.length < 8 ? "At least 8 characters" : null,
   };
   const valid = !Object.values(errors).some(Boolean);
+  // Non-blocking typo guard (gmail.coma, gmial.com ...): a tap-to-fix hint only.
+  const emailSuggestion = suggestEmail(email);
   // Explicit consent (DPDP). Client-side only: the signup API is unchanged.
   const [agreed, setAgreed] = useState(false);
 
@@ -49,7 +52,28 @@ export default function SignUp() {
       <H1>Create your account</H1>
       <P muted>Next, you&apos;ll tell us your society and flat so your society admin can verify you.</P>
       <Field label="Full name" value={displayName} onChangeText={setDisplayName} autoComplete="name" error={touched ? errors.displayName : null} />
-      <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" error={touched ? errors.email : null} />
+      <Field
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        hint="We'll send a link to confirm it."
+        error={touched ? errors.email : null}
+      />
+      {emailSuggestion ? (
+        <Text style={{ color: colors.warn, marginTop: -6, marginBottom: 12 }} accessibilityLiveRegion="polite">
+          {"Did you mean "}
+          <Text
+            style={{ color: colors.accent, fontWeight: "700", textDecorationLine: "underline" }}
+            onPress={() => setEmail(emailSuggestion)}
+            accessibilityRole="button"
+          >
+            {emailSuggestion}
+          </Text>
+          ?
+        </Text>
+      ) : null}
       <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="98765 43210" error={touched ? errors.phone : null} />
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry error={touched ? errors.password : null} />
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12 }}>

@@ -56,6 +56,9 @@ export const users = pgTable(
     // at it) but is anonymised; the email becomes a unique tombstone so the
     // real address can sign up again.
     deletedAt: ts("deleted_at"),
+    // Null until the signup address is confirmed (api/ROUTES.md "Email
+    // verification"). Joining a society / admin requests need it set.
+    emailVerifiedAt: ts("email_verified_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("users_phone").on(t.phone)],
@@ -128,6 +131,24 @@ export const passwordResetTokens = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("idx_password_reset_user").on(t.userId)],
+);
+
+// Email verification links. token_hash = sha256 of a 32-byte random secret, so
+// it is looked up directly. `email` binds the link to the address it went to.
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull().unique("email_verification_tokens_hash_unique"),
+    expiresAt: ts("expires_at").notNull(),
+    usedAt: ts("used_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_email_verification_user").on(t.userId)],
 );
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@ import {
 } from "../lib/adminRequests.js";
 import { approvedMembership, isPlatformAdmin, requireSocietyAdmin } from "../lib/authz.js";
 import { DomainError, forbidden, invalid, notFound } from "../lib/errors.js";
+import { assertEmailVerified } from "../lib/emailVerification.js";
 import { notifyNominee, notifyPlatformAdmins, notifyUsers } from "../lib/notify.js";
 import { memberCountSql } from "../lib/societyTier.js";
 import { presignDownload } from "../plugins/r2.js";
@@ -186,6 +187,7 @@ export async function adminRequestRoutes(fastify: FastifyInstance) {
     { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: HOUR } }, schema: { body: createAdminRequestBody } },
     async (req, reply) => {
       const me = req.userId!;
+      await assertEmailVerified(me);
       const b = req.body;
       const problem = docKeyProblem(me, b);
       if (problem) throw invalid(problem);

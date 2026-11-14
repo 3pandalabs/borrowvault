@@ -12,6 +12,8 @@ import { env } from "../env.js";
 import { actionMail, sendMail } from "../lib/mailer.js";
 import { deleteTokensOf } from "../lib/pushTokens.js";
 import { userView } from "../lib/users.js";
+import { sendVerificationEmail, verifyEmailToken } from "../lib/emailVerification.js";
+import { DomainError } from "../lib/errors.js";
 import { keyedLimiter } from "../lib/clientKey.js";
 import { globalLimiter, registerRateLimit } from "../plugins/rateLimit.js";
 
@@ -28,6 +30,7 @@ const MINUTE = 60_000;
 
 // Bound the mail a single unauthenticated route can trigger, across all callers.
 const resetMailBudget = globalLimiter(200, 60 * MINUTE);
+const verifyMailBudget = globalLimiter(500, 60 * MINUTE);
 // Login: per-IP (route config) + per-email + a global ceiling, so credential
 // stuffing can't just rotate IPs against one account or spray the whole table.
 const loginPerEmail = keyedLimiter(10, 15 * MINUTE);
@@ -82,6 +85,12 @@ export async function authRoutes(fastify: FastifyInstance) {
         .returning();
       // Generic failure for a taken address: no account-enumeration oracle.
       if (!user) return reply.code(409).send({ error: "registration_failed", code: "CONFLICT" });
+      // Fail-soft: a token or mail hiccup never fails the signup (Resend exists).
+      if (verifyMailBudget()) {
+        await sendVerificationEmail(user, (msg) => req.log.info({ userId: user.id }, msg)).catch((err) =>
+          req.log.warn({ err }, "verification email failed"),
+        );
+      }
       return reply.code(201).send(await tokens(user));
     },
   );
@@ -209,6 +218,38 @@ export async function authRoutes(fastify: FastifyInstance) {
       await db.delete(sessions).where(eq(sessions.userId, consumed[0].userId));
       // Every device is signed out, so it must stop getting chat previews too.
       await deleteTokensOf(consumed[0].userId);
+      return reply.code(204).send();
+    },
+  );
+
+  // --- email verification (api/ROUTES.md "Email verification") --------------
+
+  app.post(
+    "/auth/verify-email",
+    { config: { rateLimit: { max: 20, timeWindow: 15 * MINUTE } }, schema: { body: z.object({ token: z.string().min(1).max(200) }) } },
+    async (req, reply) => {
+      const result = await verifyEmailToken(req.body.token);
+      if (result === "invalid") return reply.code(400).send({ error: "invalid_or_expired_token" });
+      return { emailVerified: true };
+    },
+  );
+
+  app.post(
+    "/auth/verify-email/resend",
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: { max: 3, timeWindow: 60 * MINUTE, keyGenerator: (req) => `user:${req.userId}` } },
+    },
+    async (req, reply) => {
+      const [user] = await db
+        .select({ id: users.id, email: users.email, verifiedAt: users.emailVerifiedAt, deletedAt: users.deletedAt })
+        .from(users)
+        .where(eq(users.id, req.userId!))
+        .limit(1);
+      if (!user || user.deletedAt) return reply.code(401).send({ error: "account_deleted" });
+      if (user.verifiedAt) throw new DomainError("CONFLICT", "email_already_verified");
+      if (!verifyMailBudget()) return reply.code(429).send({ error: "rate_limited" });
+      await sendVerificationEmail(user, (msg) => req.log.info({ userId: user.id }, msg));
       return reply.code(204).send();
     },
   );

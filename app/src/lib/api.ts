@@ -262,6 +262,9 @@ export async function hasSession(): Promise<boolean> {
 export const requestPasswordReset = (email: string) =>
   request<void>("/auth/password-reset/request", { method: "POST", body: { email }, auth: false });
 
+/** Emails a fresh verification link (ROUTES.md "Email verification"). 409 email_already_verified; 3 / hour. */
+export const resendVerificationEmail = () => post<void>("/auth/verify-email/resend");
+
 // ---------------- Profile ----------------
 
 export const getMe = () => get<Me>("/me");
@@ -504,6 +507,10 @@ export function friendlyError(err: unknown): string {
     // Signup with a registered email: 409 CONFLICT, which the code switch below would read as a booking race.
     if (err.error === "registration_failed")
       return "Couldn't create an account with this email. If you've signed up before, sign in instead.";
+    // Email verification (ROUTES.md): 403 before joining a society / admin requests.
+    if (err.error === "email_unverified")
+      return "Confirm your email first. Open the link we emailed you (check spam too), or tap Resend.";
+    if (err.error === "email_already_verified") return "Your email is already confirmed.";
     switch (err.code) {
       case "OVERLAP":
         return "Those dates are already booked. Please pick another slot.";

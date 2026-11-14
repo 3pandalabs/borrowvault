@@ -9,6 +9,7 @@ import { approvedSocietyIds, isPlatformAdmin, isSocietyAdmin } from "../lib/auth
 import { conflict, invalid, notFound } from "../lib/errors.js";
 import { sweepDueNominations } from "../lib/adminApproval.js";
 import { notifyJoinRequest } from "../lib/notify.js";
+import { assertEmailVerified } from "../lib/emailVerification.js";
 import { assertRoomForMember, isPilot, pilotFull } from "../lib/pilot.js";
 import { approvedMemberCount, memberCountSql } from "../lib/societyTier.js";
 import { UPI_VPA_RE } from "../lib/upi.js";
@@ -97,6 +98,7 @@ export async function societyRoutes(fastify: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      await assertEmailVerified(req.userId!);
       const societyId = req.params.id;
       const b = req.body;
       const [s] = await db.select().from(societies).where(and(eq(societies.id, societyId), eq(societies.status, "live")));

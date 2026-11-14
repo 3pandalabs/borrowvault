@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Pressable, Switch, Text, View } from "react-native";
 import { GreenCount, NominationBox } from "../../src/components/Nomination";
 import { Button, Card, Chip, ErrorText, Field, H2, KV, P, Screen, TrustBadge } from "../../src/components/ui";
+import { VerifyEmailBanner } from "../../src/components/VerifyEmailBanner";
 import { useAction, useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useJoinRequests } from "../../src/hooks/useJoinRequests";
@@ -44,6 +45,7 @@ export default function Profile() {
 
   return (
     <Screen onRefresh={() => void refresh()}>
+      <VerifyEmailBanner />
       {awaiting.map((r) => (
         <NominationBox key={r.id} kicker="You've been nominated" title={nominationHeadline(r)}>
           <P>Accept by uploading your ID proof, or decline. Co-admins approve residents, issue invite codes and settle disputes.</P>

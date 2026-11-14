@@ -19,18 +19,30 @@ Phase 1 has **no payment gateway**. Rental fees (and optional P2P deposits) are 
 
 | Method | Path | Auth | Body → Response |
 |---|---|---|---|
-| POST | `/auth/signup` | – | `{email, password, displayName, phone}` → `{accessToken, refreshToken, user}` |
+| POST | `/auth/signup` | – | `{email, password, displayName, phone}` → `{accessToken, refreshToken, user}`. The new account starts **unverified** (`user.emailVerified: false`) and a verification link is emailed in the background (see "Email verification" below). |
 | POST | `/auth/login` | – | `{email, password}` → same |
 | POST | `/auth/refresh` | – | `{refreshToken}` → same |
 | POST | `/auth/logout` | ✓ | `{refreshToken}` → 204 always; the session is deleted only if the token verifies and belongs to the caller |
 | POST | `/auth/password-reset/request` | – | `{email}` → 204 **always** (no account enumeration). Emails a link to `https://borrowvault.3pandalabs.com/reset-password?token=…` (`WEB_ORIGIN`; the web page handles it, the app just opens that URL) (30 min, single use). Same work (hashing) for unknown emails; mail is sent in the background. |
 | POST | `/auth/password-reset/confirm` | – | `{token, password}` → 204 (kills all sessions **and deletes all the user's push tokens**); 400 `invalid_or_expired_token` |
+| POST | `/auth/verify-email` | – | `{token}` → 200 `{emailVerified: true}`. Marks the token's account verified. Idempotent: presenting an already-used token again (a second click) is 200 too and changes nothing. 400 `{error: "invalid_or_expired_token"}` for an unknown token, an unused token past its 24 h expiry, or one issued for an address the account no longer has. Rate limited: 20 / 15 min per client IP. |
+| POST | `/auth/verify-email/resend` | ✓ | no body → **204**. Invalidates the caller's earlier unused links and emails a fresh one (24 h). 409 `{error: "email_already_verified", code: "CONFLICT"}` if the account is already verified. Rate limited: 3 / hour per user → 429 `{error: "rate_limited"}`. |
 | GET | `/me` | ✓ | → `{user, memberships: Membership[]}` |
 | PATCH | `/me` | ✓ | `{displayName?, phone?, upiVpa?, chatPushEnabled?: boolean}` → `{user}`. `upiVpa` is validated as `^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$`; it is required before you can lend. `chatPushEnabled: false` stops chat push notifications to all your devices (default `true`). |
 | POST | `/me/push-tokens` | ✓ | `{token, platform: "ios"\|"android"}` → **204**. Registers this device for push. `token` must be an Expo push token matching `^Expo(nent)?PushToken\[[^\]\s]{1,200}\]$` (else 400 `VALIDATION`). Upsert on `token`: re-registering refreshes `last_seen_at`, and a token already registered to another user is **moved** to the caller (one device = one signed-in account). The app calls it on every app start and sign-in. Rate limited: 20 / hour per user → 429 `{error: "rate_limited"}`. |
 | DELETE | `/me/push-tokens` | ✓ | `{token}` (JSON body, 1–300 chars) → **204** always. Unregisters that token if it belongs to the caller (someone else's token is left alone, still 204). The app calls it on sign-out, **before** `POST /auth/logout`. Rate limited: 30 / hour per user. |
 
-`user = {id, email, displayName, phone, upiVpa|null, isPlatformAdmin, chatPushEnabled: boolean, trust: {score, completed, disputesLost}}`
+`user = {id, email, emailVerified: boolean, displayName, phone, upiVpa|null, isPlatformAdmin, chatPushEnabled: boolean, trust: {score, completed, disputesLost}}`
+
+### Email verification
+
+A typo in the signup address (`name@gmail.coma`) would otherwise send every password reset and notice into the void, so new accounts confirm their address.
+
+- Signup emails a link to `${WEB_ORIGIN}/verify-email?token=…` (the web page calls `POST /auth/verify-email`; the app just opens that URL). The token is random, stored **hashed** (sha256, `email_verification_tokens`), single use, valid **24 h**, and bound to the address it was sent to. The mail is fire-and-forget, so signup never fails because of it.
+- An **unverified** user can sign in, browse, edit their profile and look around onboarding, but these return 403 `{error: "email_unverified", code: "FORBIDDEN"}` until they verify: `POST /societies/:id/join` (a membership request) and `POST /admin-requests` (registering a society or asking to become an admin). The check runs before any other validation.
+- Accounts that existed before verification shipped were marked verified by the migration (`email_verified_at = now()`, only in the run that adds the column), so pilot users are unaffected.
+- There is no change-email route. If one is added, it must clear `email_verified_at` and send a new link; tokens issued for the old address already stop working because they are bound to it.
+- Clients show a "Verify your email" banner while `user.emailVerified` is false (with Resend), and refresh `GET /me` when the app returns to the foreground so it clears after verifying in the browser. Wrong address? Sign out and sign up again with the right one.
 
 There is no sign-out-everywhere route. Account deletion is below.
 
@@ -66,7 +78,7 @@ Afterwards: login with the old email → 401 `invalid_credentials` (no row has t
 |---|---|---|---|
 | GET | `/societies?q=` | – | Search live societies → `[{id, name, city, tier: "pilot"\|"verified", full: boolean}]`. `full` = a pilot society at its member cap (see "Pilot societies"), so the join UI can say so before the user applies. |
 | GET | `/societies/:id/towers` | – | → `[{id, name}]` (used to pick a tower + flat number at join time) |
-| POST | `/societies/:id/join` | ✓ | `{inviteCode?, towerId, flatNo, occupancy: "owner"\|"tenant"\|"family", proofKey?}` → `Membership` (status `pending`). A valid invite code for the tower records `via: "invite"`. The unit is created if missing. 409 `{error: "society_full", code: "CONFLICT"}` when the society is a pilot at its member cap. 409 `CONFLICT` while the caller already has a pending or approved membership there (so a re-submit never queues, or notifies, twice). The society's admins are notified (see "Join request notice"). |
+| POST | `/societies/:id/join` | ✓ | `{inviteCode?, towerId, flatNo, occupancy: "owner"\|"tenant"\|"family", proofKey?}` → `Membership` (status `pending`). 403 `{error: "email_unverified", code: "FORBIDDEN"}` until the caller's email is verified (see "Email verification"). A valid invite code for the tower records `via: "invite"`. The unit is created if missing. 409 `{error: "society_full", code: "CONFLICT"}` when the society is a pilot at its member cap. 409 `CONFLICT` while the caller already has a pending or approved membership there (so a re-submit never queues, or notifies, twice). The society's admins are notified (see "Join request notice"). |
 | POST | `/storage/presign` | ✓ | `{purpose: "proof"\|"listing_photo"\|"admin_doc", mime, bytes}` → `{key, uploadUrl}` (proof ≤10 MB pdf/jpeg/png; listing photo ≤8 MB jpeg/png/webp; admin_doc ≤10 MB pdf/jpeg/png, key under `admin-docs/`). PUT the file to `uploadUrl` with exactly that `Content-Type` and `Content-Length` (URL valid 5 min). Every presign returns a fresh key; no route overwrites or deletes an upload. |
 | GET | `/storage/url?key=` | ✓ | → `{url}` (presigned GET, 10 min; only the uploader, society admins of a related membership, or booking parties). `admin_doc` keys: **only the uploader and platform admins** (society admins get 404 like everyone else). |
 
@@ -149,7 +161,7 @@ No RWA certificate or authorisation letter is asked for or accepted (400 if sent
 
 | Method | Path | Auth | Body → Response |
 |---|---|---|---|
-| POST | `/admin-requests` | ✓ | Body is discriminated on `kind` (`new_society` or `join_admin`; nominations are created with `POST /admin/societies/:id/nominations`) → 201 `AdminRequest` (status `pending`). Rate limited: 10 per hour per client IP (429 `{error: "rate_limited"}`). The platform admins are emailed (best effort). |
+| POST | `/admin-requests` | ✓ | Body is discriminated on `kind` (`new_society` or `join_admin`; nominations are created with `POST /admin/societies/:id/nominations`) → 201 `AdminRequest` (status `pending`). 403 `{error: "email_unverified", code: "FORBIDDEN"}` until the caller's email is verified. Rate limited: 10 per hour per client IP (429 `{error: "rate_limited"}`). The platform admins are emailed (best effort). |
 | GET | `/admin-requests/mine` | ✓ | → `AdminRequest[]`, newest first (all statuses), including nominations **of** the caller. Runs the nomination auto-approve check first. |
 | POST | `/admin-requests/:id/withdraw` | ✓ | no body → `AdminRequest` (status `withdrawn`). Own requests only (404 otherwise); 409 `{error: "not_pending", code: "CONFLICT"}` if it isn't pending. A nominee who has accepted can withdraw this way too. |
 | POST | `/admin-requests/:id/accept` | nominee | `{idProofKey, statement? (≤1000)}` → `AdminRequest` (status `pending`, `nomineeAcceptedAt` set, `autoApproveAt` = +48 h). 404 unless the caller is the nominee. 409 `{error: "not_nominated", code: "CONFLICT"}` unless the status is `nominated`. 409 `membership_not_active` if the nominee's membership is no longer approved. 400 if `idProofKey` isn't the caller's own `admin_doc` upload. Platform admins and the nominator are emailed (best effort). |

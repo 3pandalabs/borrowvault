@@ -62,7 +62,7 @@ describe.skipIf(!RUN)("join request notice (Postgres)", () => {
   async function user(name: string, opts: { deleted?: boolean } = {}) {
     const [u] = await db
       .insert(users)
-      .values({ email: `${name}-${++n}@example.com`, passwordHash: "x", displayName: name, phone: "+919876543210", deletedAt: opts.deleted ? new Date() : null })
+      .values({ email: `${name}-${++n}@example.com`, passwordHash: "x", displayName: name, phone: "+919876543210", deletedAt: opts.deleted ? new Date() : null, emailVerifiedAt: new Date() })
       .returning();
     return u;
   }

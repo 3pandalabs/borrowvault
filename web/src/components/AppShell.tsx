@@ -13,6 +13,7 @@ import { useUnread, useUnreadPoller } from "@/lib/unread";
 import { cn } from "@/lib/utils";
 import { Backdrop } from "./Backdrop";
 import { LoadError, Loading, selectClass } from "./common";
+import { VerifyEmailBanner } from "./VerifyEmailBanner";
 import { Logo } from "./Wordmark";
 
 /** /login that comes back here afterwards (deep links, e.g. from the mobile app). */
@@ -50,6 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {me.data ? (
         <SessionProvider me={me.data} refresh={me.reload} setMe={me.setData}>
           <Header />
+          <VerifyEmailBanner />
           <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">{children}</main>
         </SessionProvider>
       ) : (

@@ -8,6 +8,7 @@ import { ErrorText, Field } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, errorMessage, setTokens, signup } from "@/lib/api";
+import { suggestEmail } from "@/lib/emailTypo";
 import { PHONE_RE } from "@/lib/format";
 import { useNextPath } from "@/lib/hooks";
 
@@ -19,6 +20,8 @@ export default function SignupPage() {
   const [busy, setBusy] = useState(false);
   // DPDP-style explicit consent. Client-side only: the signup API is unchanged.
   const [agreed, setAgreed] = useState(false);
+  // Non-blocking typo guard (gmail.coma, gmial.com ...): a tap-to-fix hint only.
+  const emailSuggestion = suggestEmail(form.email);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -54,8 +57,21 @@ export default function SignupPage() {
         <Field label="Your name" htmlFor="name" hint="Neighbours see this on your listings and bookings.">
           <Input id="name" required autoComplete="name" value={form.displayName} onChange={set("displayName")} />
         </Field>
-        <Field label="Email" htmlFor="email">
+        <Field label="Email" htmlFor="email" hint="We'll send a link to confirm it.">
           <Input id="email" type="email" required autoComplete="email" value={form.email} onChange={set("email")} />
+          {emailSuggestion ? (
+            <p className="mt-1.5 text-sm text-amber-800" role="status">
+              Did you mean{" "}
+              <button
+                type="button"
+                className="font-medium text-accent underline underline-offset-2"
+                onClick={() => setForm((f) => ({ ...f, email: emailSuggestion }))}
+              >
+                {emailSuggestion}
+              </button>
+              ?
+            </p>
+          ) : null}
         </Field>
         <Field label="Mobile number" htmlFor="phone" hint="10-digit Indian mobile.">
           <Input id="phone" type="tel" required autoComplete="tel" inputMode="tel" value={form.phone} onChange={set("phone")} />

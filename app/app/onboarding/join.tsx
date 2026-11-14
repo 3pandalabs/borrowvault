@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { Button, Card, Chip, ErrorText, Field, H2, Label, Loading, P, Screen } from "../../src/components/ui";
+import { VerifyEmailBanner } from "../../src/components/VerifyEmailBanner";
 import { useAction } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { friendlyError, getTowers, joinSociety } from "../../src/lib/api";
@@ -83,6 +84,7 @@ export default function Join() {
 
   return (
     <Screen>
+      <VerifyEmailBanner />
       <H2>{name}</H2>
       {loadError ? <ErrorText>{loadError}</ErrorText> : null}
       {!towers && !loadError ? <Loading /> : null}

@@ -5,6 +5,8 @@ export type Trust = { score: number; completed: number; disputesLost: number };
 export type User = {
   id: string;
   email: string;
+  /** False until the signup address is confirmed; joining a society needs it. */
+  emailVerified: boolean;
   displayName: string;
   phone: string;
   upiVpa: string | null;

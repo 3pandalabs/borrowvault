@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { AppState } from "react-native";
 import {
   ApiError,
   friendlyError,
@@ -59,6 +60,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
     return () => setSessionExpiredHandler(null);
   }, [refresh]);
+
+  // Unverified email: re-fetch /me whenever the app comes back to the foreground,
+  // so the "Verify your email" banner clears after the link is opened in the browser.
+  const unverified = user ? !user.emailVerified : false;
+  useEffect(() => {
+    if (!unverified) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refresh();
+    });
+    return () => sub.remove();
+  }, [unverified, refresh]);
 
   // App start (session restored) and every sign-in: (re)register this device for push.
   const userId = user?.id;

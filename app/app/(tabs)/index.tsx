@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { Button, Chip, ChipRow, Empty, ErrorText, FREE_GREEN, FreeBadge, TrustBadge } from "../../src/components/ui";
+import { VerifyEmailBanner } from "../../src/components/VerifyEmailBanner";
 import { useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
 import { getCategories, listListings } from "../../src/lib/api";
@@ -43,6 +44,7 @@ export default function Browse() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={s.header}>
+        <VerifyEmailBanner />
         {approved.length > 1 ? (
           <ChipRow>
             {approved.map((m) => (

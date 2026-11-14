@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Image, Text, View } from "react-native";
 import { Button, ErrorText, Field, H1, P, Screen } from "../../src/components/ui";
 import { useAuth } from "../../src/hooks/useAuth";
-import { requestPasswordReset } from "../../src/lib/api";
+import { friendlyError, requestPasswordReset } from "../../src/lib/api";
 import { colors } from "../../src/lib/theme";
 import { isValidEmail } from "../../src/lib/validation";
 
@@ -28,10 +28,15 @@ export default function SignIn() {
       setError("Enter your email above first.");
       return;
     }
+    setError(null);
+    setInfo(null);
     try {
+      // The API answers 204 whether or not the account exists, so only real
+      // failures (offline, 429, 5xx) land here; showing them reveals nothing.
       await requestPasswordReset(email.trim());
-    } catch {
-      // never reveal whether the account exists
+    } catch (err) {
+      setError(friendlyError(err));
+      return;
     }
     setInfo("If that email has an account, we've sent a reset link. Open it on this phone: it takes you to the BorrowVault website to set a new password (link valid 30 min).");
   }

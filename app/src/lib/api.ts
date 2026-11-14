@@ -478,6 +478,9 @@ export function friendlyError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.error === "listing_removed") return "A society admin removed this listing. It can't be changed or put back.";
     if (err.error === "wrong_password") return "That password isn't right.";
+    // Signup with a registered email: 409 CONFLICT, which the code switch below would read as a booking race.
+    if (err.error === "registration_failed")
+      return "Couldn't create an account with this email. If you've signed up before, sign in instead.";
     switch (err.code) {
       case "OVERLAP":
         return "Those dates are already booked. Please pick another slot.";

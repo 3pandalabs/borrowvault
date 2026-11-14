@@ -110,6 +110,8 @@ export function errorMessage(e: unknown): string {
 // Admin-request and admin-membership errors (api/ROUTES.md) put a code in
 // `error` rather than prose, so they get human copy here.
 const MESSAGE_COPY: Record<string, string> = {
+  // Signup with a registered email (generic on purpose: no account-enumeration oracle).
+  registration_failed: "Couldn't create an account with this email. If you've signed up before, sign in instead.",
   request_pending:
     "There is already an open admin request or nomination for this person and society. Wait for it, or withdraw it from My requests.",
   already_admin: "That person is already an admin of this society.",

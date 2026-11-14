@@ -506,6 +506,7 @@ export function friendlyError(err: unknown): string {
       case "rate_limited":
         return "Too many attempts. Please wait a minute and try again.";
     }
+    if (err.status === 429) return "Too many attempts. Please wait a minute and try again.";
     if (err.status === 404) return "Not found, or not in your society.";
     if (err.status === 403) return "You're not allowed to do that on this booking.";
     if (err.status === 503) return "Bookings are briefly unavailable. Please try again in a minute.";

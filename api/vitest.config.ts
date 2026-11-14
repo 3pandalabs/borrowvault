@@ -6,5 +6,8 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     environment: "node",
+    // The *.db.test.ts files each drop and re-migrate the TEST_DATABASE_URL
+    // schema, so with a database they must not run at the same time.
+    fileParallelism: !process.env.TEST_DATABASE_URL,
   },
 });

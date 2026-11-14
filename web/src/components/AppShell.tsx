@@ -8,6 +8,7 @@ import { ApiError, getTokens, logout } from "@/lib/api";
 import { SessionProvider, useMeLoader, useSession, useSignedIn } from "@/lib/session";
 import { useOfferCount, useOfferPoller } from "@/lib/offers";
 import { useAwaitingNominations, useNominationsPoller } from "@/lib/nominations";
+import { useJoinRequestCounts, useJoinRequestsPoller } from "@/lib/joinRequests";
 import { useUnread, useUnreadPoller } from "@/lib/unread";
 import { cn } from "@/lib/utils";
 import { Backdrop } from "./Backdrop";
@@ -71,6 +72,9 @@ function Header() {
   const offers = useOfferCount();
   useNominationsPoller();
   const nominated = useAwaitingNominations().length > 0;
+  useJoinRequestsPoller(adminOf.map((m) => m.societyId));
+  const joinRequests = useJoinRequestCounts();
+  const anyJoinRequests = adminOf.some((m) => (joinRequests[m.societyId] ?? 0) > 0);
 
   const links: { href: string; label: string; badge?: number; badgeLabel?: string; dot?: string }[] = [
     { href: "/home", label: "Home" },
@@ -85,10 +89,16 @@ function Header() {
     ...(memberships.length || unread ? [{ href: "/messages", label: "Messages", badge: unread }] : []),
     // Green dot while a co-admin nomination waits for this user's answer.
     { href: "/profile", label: "Profile", ...(nominated ? { dot: "You've been nominated as a co-admin" } : {}) },
-    ...adminOf.map((m) => ({
-      href: `/admin/${m.societyId}`,
-      label: adminOf.length > 1 ? `Admin · ${m.societyName}` : "Society admin",
-    })),
+    ...adminOf.map((m) => {
+      const pending = joinRequests[m.societyId] ?? 0;
+      return {
+        href: `/admin/${m.societyId}`,
+        label: adminOf.length > 1 ? `Admin · ${m.societyName}` : "Society admin",
+        // Residents waiting for approval (api/ROUTES.md "Join request notice").
+        badge: pending,
+        badgeLabel: `${pending} resident${pending === 1 ? "" : "s"} waiting for approval`,
+      };
+    }),
     ...(user.isPlatformAdmin ? [{ href: "/platform", label: "Platform" }] : []),
   ];
 
@@ -155,7 +165,7 @@ function Header() {
           </button>
           <button className="relative rounded-full p-2 md:hidden" aria-label="Menu" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
-            {nominated && !open ? (
+            {(nominated || anyJoinRequests) && !open ? (
               <span className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-accent ring-2 ring-white" aria-hidden />
             ) : null}
           </button>

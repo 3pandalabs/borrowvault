@@ -5,6 +5,7 @@ import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { usePushNotifications } from "../src/hooks/usePushNotifications";
+import { JoinRequestsProvider } from "../src/hooks/useJoinRequests";
 import { NominationsProvider } from "../src/hooks/useNominations";
 import { UnreadProvider } from "../src/hooks/useUnread";
 import { initCrashReporting, setCrashUser, wrapRoot } from "../src/lib/crash";
@@ -69,8 +70,10 @@ function RootLayout() {
       <AuthProvider>
         <UnreadProvider>
           <NominationsProvider>
-            <RootNavigation />
-            <StatusBar style="dark" />
+            <JoinRequestsProvider>
+              <RootNavigation />
+              <StatusBar style="dark" />
+            </JoinRequestsProvider>
           </NominationsProvider>
         </UnreadProvider>
       </AuthProvider>

@@ -64,11 +64,19 @@ Afterwards: login with the old email → 401 `invalid_credentials` (no row has t
 |---|---|---|---|
 | GET | `/societies?q=` | – | Search live societies → `[{id, name, city, tier: "pilot"\|"verified", full: boolean}]`. `full` = a pilot society at its member cap (see "Pilot societies"), so the join UI can say so before the user applies. |
 | GET | `/societies/:id/towers` | – | → `[{id, name}]` (used to pick a tower + flat number at join time) |
-| POST | `/societies/:id/join` | ✓ | `{inviteCode?, towerId, flatNo, occupancy: "owner"\|"tenant"\|"family", proofKey?}` → `Membership` (status `pending`). A valid invite code for the tower records `via: "invite"`. The unit is created if missing. 409 `{error: "society_full", code: "CONFLICT"}` when the society is a pilot at its member cap. |
+| POST | `/societies/:id/join` | ✓ | `{inviteCode?, towerId, flatNo, occupancy: "owner"\|"tenant"\|"family", proofKey?}` → `Membership` (status `pending`). A valid invite code for the tower records `via: "invite"`. The unit is created if missing. 409 `{error: "society_full", code: "CONFLICT"}` when the society is a pilot at its member cap. 409 `CONFLICT` while the caller already has a pending or approved membership there (so a re-submit never queues, or notifies, twice). The society's admins are notified (see "Join request notice"). |
 | POST | `/storage/presign` | ✓ | `{purpose: "proof"\|"listing_photo"\|"admin_doc", mime, bytes}` → `{key, uploadUrl}` (proof ≤10 MB pdf/jpeg/png; listing photo ≤8 MB jpeg/png/webp; admin_doc ≤10 MB pdf/jpeg/png, key under `admin-docs/`). PUT the file to `uploadUrl` with exactly that `Content-Type` and `Content-Length` (URL valid 5 min). Every presign returns a fresh key; no route overwrites or deletes an upload. |
 | GET | `/storage/url?key=` | ✓ | → `{url}` (presigned GET, 10 min; only the uploader, society admins of a related membership, or booking parties). `admin_doc` keys: **only the uploader and platform admins** (society admins get 404 like everyone else). |
 
 `Membership = {id, societyId, societyName, societyTier: "pilot"|"verified", towerName, flatNo, role: "resident"|"society_admin", status: "pending"|"approved"|"rejected"|"revoked", occupancy, createdAt}`
+
+### Join request notice
+
+Every successful `POST /societies/:id/join` (a new request, or a re-application after a rejection/revocation) notifies **every approved `society_admin` of that society**, except the requester. Platform admins are not notified (they aren't asked to review residents). Best effort and **fire-and-forget**: it runs after the response and never delays or fails the join (still 201). Deleted accounts are skipped. A pending request can't be re-submitted (409 above), so there is no duplicate notice; a re-application only follows an admin's own decision. Only the requester's display name and tower/flat go out: no email, phone, occupancy or proof document.
+
+- **Email** (one per admin), subject `<requester displayName> asked to join <society name>`, HTML and text parts. It names the requester, their tower and flat and the society, and asks the admin to check the proof and approve or decline. A button (HTML) and the raw URL (both parts) link to `<WEB_ORIGIN>/admin/<societyId>` (the Members tab with the pending filter is the default there).
+- **Push** to every app device each admin has registered. `chatPushEnabled` doesn't apply (it only covers chat). Payload: `{title: "New join request", body: "<requester> (<tower>-<flat>) asked to join <society>. Tap to review.", data: {type: "join_request", societyId, membershipId}, sound: "default", channelId: "default"}`. Tapping it opens the app's join-requests screen (`/admin/join-requests`).
+- **In the clients**: the pending count is the length of `GET /admin/societies/:id/memberships?status=pending`, summed over the societies the user admins (no new endpoint). The app adds it to the green Profile tab count (next to co-admin nominations) and shows a banner on the profile screen ("N residents waiting for approval") that opens the join-requests screen, where admins approve or decline with an optional note. The web shows it as a count badge on the "Society admin" header link. Both poll lightly (every 2 min while in the foreground) and refresh after a review; the app also refreshes when a join-request push arrives.
 
 ### Society admin (role `society_admin` in that society; platform admins too)
 
@@ -414,7 +422,7 @@ Sending a message (`POST /conversations/:id/messages`) notifies the **other part
   ```
 - **Throttle.** At most **one push per (conversation, recipient) per 60 s**, **unless** the recipient has read past the previously pushed message (their read marker ≥ its sequence); then the next message pushes straight away. The throttle state is **in memory, per API process** (borrowvault-api is one container; a restart forgets it, which at worst sends one extra push).
 - **Tickets.** A ticket with `details.error: "DeviceNotRegistered"` deletes that token. Other ticket errors and transport failures are logged and dropped (no retry). Push **receipts are not polled** in Phase 1, so a token that only fails at the receipt stage stays until a later ticket reports `DeviceNotRegistered`.
-- **Other pushes.** A co-admin nomination also pushes the nominee (`data.type: "admin_nomination"`, see "Co-admin nominations"). It ignores `chatPushEnabled` and the chat throttle.
+- **Other pushes.** A co-admin nomination also pushes the nominee (`data.type: "admin_nomination"`, see "Co-admin nominations"), and a join request pushes the society's admins (`data.type: "join_request"`, see "Join request notice"). They ignore `chatPushEnabled` and the chat throttle.
 - **Clients.** Tapping the notification opens `/chat/<conversationId>` (from `data.conversationId`). The app suppresses the banner while that conversation is already on screen. Web has no push.
 
 #### Dispute notices (push + email)

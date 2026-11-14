@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import type {
+  AdminMembership,
   AdminRequest,
   AuthResponse,
   BlockedUser,
@@ -25,6 +26,7 @@ import type {
   MediaMime,
   MediaPhase,
   Membership,
+  MembershipStatus,
   Message,
   MessagePage,
   MessageReportReceipt,
@@ -339,6 +341,27 @@ export function adminRequestError(err: unknown): string {
     return "This nomination has already been answered or cancelled. Pull down to refresh.";
   }
   if (err instanceof ApiError && err.status === 404) return "Request not found. Pull down to refresh.";
+  return friendlyError(err);
+}
+
+// ---------------- Society admin: join requests ----------------
+
+export const listSocietyMemberships = (societyId: string, status?: MembershipStatus) =>
+  get<AdminMembership[]>(`/admin/societies/${encodeURIComponent(societyId)}/memberships${qs({ status })}`);
+export const approveMembership = (id: string, note?: string) =>
+  post<Membership>(`/admin/memberships/${encodeURIComponent(id)}/approve`, note ? { note } : {});
+export const rejectMembership = (id: string, note?: string) =>
+  post<Membership>(`/admin/memberships/${encodeURIComponent(id)}/reject`, note ? { note } : {});
+
+/** Approve/decline errors whose generic copy (written for bookings) would mislead. */
+export function membershipReviewError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.error === "society_full")
+      return "Your pilot society is at its 50-member limit. BorrowVault lifts it once your society is verified.";
+    if (err.error === "admin_membership_platform_only") return "Only BorrowVault can decline a society admin.";
+    if (err.code === "CONFLICT") return "Someone already reviewed this request. Pull down to refresh.";
+    if (err.status === 404) return "This request isn't there any more. Pull down to refresh.";
+  }
   return friendlyError(err);
 }
 

@@ -5,7 +5,9 @@ import { GreenCount, NominationBox } from "../../src/components/Nomination";
 import { Button, Card, Chip, ErrorText, Field, H2, KV, P, Screen, TrustBadge } from "../../src/components/ui";
 import { useAction, useLoader } from "../../src/hooks/useAsync";
 import { useAuth } from "../../src/hooks/useAuth";
+import { useJoinRequests } from "../../src/hooks/useJoinRequests";
 import { useNominations } from "../../src/hooks/useNominations";
+import { joinRequestsHeadline } from "../../src/lib/joinRequests";
 import { awaitingNominations, nominationHeadline } from "../../src/lib/nominations";
 import { doUnblock } from "../../src/components/Safety";
 import { listBlocks, listListings, listMyAdminRequests, updateListing, updateMe } from "../../src/lib/api";
@@ -31,6 +33,7 @@ export default function Profile() {
     if (adminRequests.data) setNominationsFrom(adminRequests.data);
   }, [adminRequests.data, setNominationsFrom]);
   const awaiting = adminRequests.data ? awaitingNominations(adminRequests.data) : nominationsCtx.awaiting;
+  const joinRequests = useJoinRequests();
 
   async function setStatus(l: ListingSummary, status: "active" | "paused" | "archived") {
     await save.run(() => updateListing(l.id, { status }));
@@ -47,6 +50,12 @@ export default function Profile() {
           <Button title="Review nomination" icon="shield-checkmark" onPress={() => router.push("/admin-requests")} />
         </NominationBox>
       ))}
+      {joinRequests.total > 0 ? (
+        <NominationBox kicker="Join requests" title={joinRequestsHeadline(joinRequests.total)}>
+          <P>Check each resident&apos;s proof against their flat, then approve or decline.</P>
+          <Button title="Review join requests" icon="people" onPress={() => router.push("/admin/join-requests")} />
+        </NominationBox>
+      ) : null}
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <H2>{user.displayName}</H2>
@@ -89,6 +98,7 @@ export default function Profile() {
         requests={adminRequests.data ?? []}
         awaiting={awaiting.length}
         onOpenRequests={() => router.push("/admin-requests")}
+        onOpenJoinRequests={() => router.push("/admin/join-requests")}
       />
 
       <Card>
@@ -132,16 +142,19 @@ function SocietyAdminCard({
   requests,
   awaiting,
   onOpenRequests,
+  onOpenJoinRequests,
 }: {
   memberships: Membership[];
   requests: AdminRequest[];
   /** Co-admin nominations waiting for this user's answer (green count). */
   awaiting: number;
   onOpenRequests: () => void;
+  onOpenJoinRequests: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const eligible = memberships.filter((m) => m.status === "approved" && m.role !== "society_admin");
-  if (eligible.length === 0 && requests.length === 0) return null;
+  const isAdmin = memberships.some((m) => m.status === "approved" && m.role === "society_admin");
+  if (eligible.length === 0 && requests.length === 0 && !isAdmin) return null;
 
   const pendingFor = (societyId: string) =>
     requests.some((r) => r.kind === "join_admin" && r.status === "pending" && r.societyId === societyId);
@@ -192,6 +205,9 @@ function SocietyAdminCard({
       ) : (
         <P muted>Track your admin requests and co-admin nominations.</P>
       )}
+      {isAdmin ? (
+        <Button title="Join requests" icon="people-outline" variant="secondary" onPress={onOpenJoinRequests} />
+      ) : null}
       {memberships
         .filter((m) => m.status === "approved" && m.role === "society_admin")
         .map((m) => (

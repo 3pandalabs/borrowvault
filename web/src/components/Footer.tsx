@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 // Sitewide footer, copy from brand/footer/footer.css, plus the legal links.
+// The tagline line is brand `.footer-tagline` (DECIDED 2026-11-22).
 export function Footer() {
   return (
     <footer className="border-t border-line px-6 py-8">
@@ -18,6 +19,7 @@ export function Footer() {
           </Link>
         </nav>
         <span>All rights reserved.</span>
+        <p className="mt-1 basis-full text-xs text-fg-muted">Built by pandas. Loved by people.</p>
       </div>
     </footer>
   );

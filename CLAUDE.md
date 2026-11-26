@@ -37,6 +37,10 @@ Hostnames, **all under one first label** (Cloudflare's per-app cert depends on i
 - `robots.ts` + `sitemap.ts`; `noindex` on authed routes.
 - Dockerfiles use `node:22-alpine`.
 
+## New user alert
+
+`POST /auth/signup` emails **"BorrowVault New user"** (email, phone, name, time UTC, user id) to `NEW_USER_ALERT_EMAIL` (default `3pandas@3pandalabs.com`; `off` disables) through the normal `sendMail` path (`api/src/lib/newUserAlert.ts`). Fire-and-forget: it never blocks or fails a signup. Only real self-serve sign-ups alert: not `db/seed.ts`, not a conflicting email. Any new user-creating path must decide explicitly whether to call it.
+
 ## Git flow
 
 Never commit directly to `main`: branch → PR → merge, committing as `3pandalabs-admin` (the conditional gitconfig keys on the `3pandalabs` remote URL, so add the remote before the first commit). Stage files explicitly and never run `git add -A`.

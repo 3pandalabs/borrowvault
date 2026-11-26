@@ -9,7 +9,8 @@ import { hashSecret, verifySecret } from "../auth/password.js";
 import { db } from "../db/index.js";
 import { passwordResetTokens, sessions, users } from "../db/schema.js";
 import { env } from "../env.js";
-import { actionMail, sendMail } from "../lib/mailer.js";
+import { actionMail, mailerConfigured, sendMail } from "../lib/mailer.js";
+import { notifyNewUser } from "../lib/newUserAlert.js";
 import { deleteTokensOf } from "../lib/pushTokens.js";
 import { userView } from "../lib/users.js";
 import { sendVerificationEmail, verifyEmailToken } from "../lib/emailVerification.js";
@@ -85,6 +86,12 @@ export async function authRoutes(fastify: FastifyInstance) {
         .returning();
       // Generic failure for a taken address: no account-enumeration oracle.
       if (!user) return reply.code(409).send({ error: "registration_failed", code: "CONFLICT" });
+      // "BorrowVault New user" to the org inbox. Fire-and-forget: not awaited, never throws.
+      notifyNewUser(
+        { userId: user.id, email: user.email, phone: user.phone, displayName: user.displayName, at: user.createdAt },
+        (msg) => req.log.warn({ userId: user.id }, msg),
+        { send: sendMail, configured: mailerConfigured },
+      );
       // Fail-soft: a token or mail hiccup never fails the signup (Resend exists).
       if (verifyMailBudget()) {
         await sendVerificationEmail(user, (msg) => req.log.info({ userId: user.id }, msg)).catch((err) =>
